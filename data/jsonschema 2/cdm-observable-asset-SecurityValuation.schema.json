@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "$anchor": "cdm.observable.asset",
+  "type": "object",
+  "title": "SecurityValuation",
+  "description": " Terms defining the security valuation method as part of a security leg in a securities fianncing transaction and closely modelled onto the CollateralValuation type in FpML.",
+  "properties": {
+    "securityValuationModel": {
+      "description": "The security valuation model choice, based on either a nominal amount or a number of units.",
+      "$ref": "cdm-observable-asset-SecurityValuationModel.schema.json"
+    },
+    "underlier": {
+      "description": "The underlying security of the security leg.",
+      "$ref": "cdm-base-staticdata-asset-common-Security.schema.json"
+    }
+  },
+  "required": [
+    "securityValuationModel",
+    "underlier"
+  ]
+}

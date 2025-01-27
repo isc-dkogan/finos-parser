@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "$anchor": "cdm.observable.asset",
+  "type": "object",
+  "title": "BondChoiceModel",
+  "description": " Either a bond or convertible bond.",
+  "properties": {
+    "bond": {
+      "$ref": "cdm-base-staticdata-asset-common-Bond.schema.json"
+    },
+    "convertibleBond": {
+      "$ref": "cdm-base-staticdata-asset-common-ConvertibleBond.schema.json"
+    }
+  }
+}

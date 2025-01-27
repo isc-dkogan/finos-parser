@@ -1,0 +1,35 @@
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "$anchor": "cdm.product.template",
+  "type": "object",
+  "title": "InitialMarginCalculation",
+  "description": " Defines the initial margin calculation applicable to a single piece of collateral.",
+  "properties": {
+    "marginRatio": {
+      "description": "An element defining an initial margin expressed as a ratio of the Market Value of the collateral to the Purchase Price. A default value of initial margin ratio of 1.00 means there is no margin and thus no risk related with the collateral. See GMRA 2000 paragraph 2(z) and GMRA 2011 paragraph 2(bb).",
+      "type": "number"
+    },
+    "marginRatioThreshold": {
+      "description": "An element defining a margin ratio threshold which is the value above (when it's lower than initial margin ratio) or below (when it's higher than initial margin ratio) which parties agree they will not call a margin from each other.",
+      "type": "array",
+      "items": {
+        "type": "number"
+      },
+      "minItems": 0,
+      "maxItems": 2
+    },
+    "haircut": {
+      "description": "An element defining a haircut expressed as the percentage difference between the Market Value of the collateral and the Purchase Price of the repo and calculated as 100 multiplied by a ratio of the difference between the Market Value of the collateral and the Purchase Price of the repo to the Market Value of the collateral. Haircut is alternative way to adjust the value of collateral sold in a repurchase agreement to initial margin ratio. Because an initial margin is a percentage of the Purchase Price, while a haircut is a percentage of the Market Value of collateral, the arithmetic of initial margins and haircuts is slightly different. For example, an initial margin of 102% is not equivalent to a haircut of 2%, but to 1.961% (ie 100/102%). See GMRA 2011 paragraph 2(aa).",
+      "type": "number"
+    },
+    "haircutThreshold": {
+      "description": "An element defining a haircut percentage threshold which is the value above (when it's lower than initial haircut) or below (when it's higher than initial haircut) which parties agree they will not call a margin from each other.",
+      "type": "array",
+      "items": {
+        "type": "number"
+      },
+      "minItems": 0,
+      "maxItems": 2
+    }
+  }
+}

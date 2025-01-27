@@ -1,0 +1,24 @@
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "$anchor": "cdm.observable.asset",
+  "type": "object",
+  "title": "RelativePrice",
+  "description": " Bond price relative to a benchmark, as in a convertible bond.",
+  "properties": {
+    "spread": {
+      "description": "The spread to a benchmark.",
+      "type": "number"
+    },
+    "bondEquityModel": {
+      "description": "Bond equity model for convertible bonds.",
+      "type": "array",
+      "items": {
+        "$ref": "cdm-observable-asset-BondEquityModel.schema.json"
+      },
+      "minItems": 1
+    }
+  },
+  "required": [
+    "spread"
+  ]
+}

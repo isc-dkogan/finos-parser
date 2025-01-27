@@ -1,0 +1,32 @@
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "$anchor": "cdm.product.template",
+  "type": "object",
+  "title": "InitialMargin",
+  "description": " Defines initial margin applied to a repo transaction. Initial margin is an agreed premium to the Purchase Price of a repo to determine the required Market Value of the collateral to be delivered on the Purchase Date. It reflects quality of the collateral. Its aim is to calculate the risk-adjusted or liquidation value of collateral.",
+  "properties": {
+    "marginType": {
+      "description": "An element defining the type of assets (cash or securities) specified to apply as margin to the repo transaction. See GMRA 2011 paragraph 2(h) for 'Cash Margin' and GMRA 2011 paragraph 2(cc) for 'Margin Securities'.",
+      "$ref": "cdm-product-template-MarginTypeEnum.schema.json"
+    },
+    "margin": {
+      "description": "Initial margin calculation for a collateral asset. Initial margin requirements may be specified for multiple pieces of collateral.",
+      "type": "array",
+      "items": {
+        "$ref": "cdm-product-template-InitialMarginCalculation.schema.json"
+      },
+      "minItems": 1
+    },
+    "marginThreshold": {
+      "description": "An element defining a margin threshold which is the Net Exposure of a trade below which parties agree they will not call a margin from each other.",
+      "$ref": "cdm-observable-asset-Money.schema.json"
+    },
+    "minimumTransferAmount": {
+      "description": "An element defining a minimum transfer amount which is the minimum margin call parties will make once the margin threshold (or margin ratio threshold / haircut threshold) has been exceeded.",
+      "$ref": "cdm-observable-asset-Money.schema.json"
+    }
+  },
+  "required": [
+    "marginType"
+  ]
+}

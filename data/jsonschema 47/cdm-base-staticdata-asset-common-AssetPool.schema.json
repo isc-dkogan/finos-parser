@@ -1,0 +1,28 @@
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "$anchor": "cdm.base.staticdata.asset.common",
+  "type": "object",
+  "title": "AssetPool",
+  "description": "Characterizes the asset pool behind an asset backed bond.",
+  "properties": {
+    "version": {
+      "description": "The asset pool version.",
+      "type": "string"
+    },
+    "effectiveDate": {
+      "description": "Optionally it is possible to specify a version effective date when a version is supplied.",
+      "type": "string"
+    },
+    "initialFactor": {
+      "description": "The part of the mortgage that is outstanding on trade inception, i.e. has not been repaid yet as principal. It is expressed as a multiplier factor to the mortgage: 1 means that the whole mortgage amount is outstanding, 0.8 means that 20% has been repaid.",
+      "type": "number"
+    },
+    "currentFactor": {
+      "description": "The part of the mortgage that is currently outstanding. It is expressed similarly to the initial factor, as factor multiplier to the mortgage. This term is formally defined as part of the 'ISDA Standard Terms Supplement for use with credit derivatives transactions on mortgage-backed security with pas-as-you-go or physical settlement'.",
+      "type": "number"
+    }
+  },
+  "required": [
+    "initialFactor"
+  ]
+}

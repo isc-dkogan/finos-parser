@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "$anchor": "cdm.product.template",
+  "type": "object",
+  "title": "SecurityPayout",
+  "description": " Security payout specification in case the product payout involves some form of security collateral, as in a securities financing transaction.",
+  "properties": {
+    "securityLeg": {
+      "description": "Each SecurityLeg represent a buy/sell at different dates, typically 1 near leg and 1 far leg in a securities financing transaction.",
+      "type": "array",
+      "items": {
+        "$ref": "cdm-product-template-SecurityLeg.schema.json"
+      },
+      "minItems": 1
+    },
+    "initialMargin": {
+      "description": "RepoDurationEnum.",
+      "$ref": "cdm-product-template-InitialMargin.schema.json"
+    },
+    "repoDuration": {
+      "description": "A duration code for the repo transaction. This defines a type of a repo transaction with fixed duration.",
+      "$ref": "cdm-product-template-RepoDurationEnum.schema.json"
+    },
+    "securityValuation": {
+      "description": "The underlying securities and their valuation for the security leg.",
+      "type": "array",
+      "items": {
+        "$ref": "cdm-observable-asset-SecurityValuation.schema.json"
+      },
+      "minItems": 1
+    }
+  }
+}

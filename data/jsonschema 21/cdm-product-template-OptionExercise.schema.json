@@ -1,0 +1,24 @@
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "$anchor": "cdm.product.template",
+  "type": "object",
+  "title": "OptionExercise",
+  "description": " A class to represent the applicable terms to qualify an option exercise: the option style (e.g. American style option), the exercise procedure (e.g. manual exercise) and the settlement terms (e.g. physical vs. cash).",
+  "properties": {
+    "optionStyle": {
+      "description": "The option exercise can be of American style, Bermuda style or European style. The FpML implementation makes use of a substitution group.",
+      "$ref": "cdm-product-template-OptionStyle.schema.json"
+    },
+    "strike": {
+      "description": "Specifies the strike of the option on credit default swap.",
+      "$ref": "cdm-product-template-OptionStrike.schema.json"
+    },
+    "exerciseProcedure": {
+      "description": "The set of parameters defining the procedure associated with the exercise, e.g. manual exercise.",
+      "$ref": "cdm-product-template-ExerciseProcedure.schema.json"
+    }
+  },
+  "required": [
+    "optionStyle"
+  ]
+}

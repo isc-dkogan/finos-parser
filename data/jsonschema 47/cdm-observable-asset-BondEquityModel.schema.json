@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "$anchor": "cdm.observable.asset",
+  "type": "object",
+  "title": "BondEquityModel",
+  "description": " Bond equity model to value convertible bonds and modelled onto BondEquity.model in FpML.",
+  "properties": {
+    "bondchoiceModel": {
+      "description": "Either the bond or convertible bond.",
+      "$ref": "cdm-observable-asset-BondChoiceModel.schema.json"
+    },
+    "equity": {
+      "description": "The equity.",
+      "$ref": "cdm-base-staticdata-asset-common-Equity.schema.json"
+    }
+  }
+}

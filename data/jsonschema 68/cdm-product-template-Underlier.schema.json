@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "$anchor": "cdm.product.template",
+  "type": "object",
+  "title": "Underlier",
+  "description": "The underlier of a payout which can be either an Asset or a Transferable Product, which is an Asset with Economic Terms.",
+  "properties": {
+    "Asset": {
+      "description": "Identifies a transferable asset.",
+      "$ref": "cdm-base-staticdata-asset-common-Asset.schema.json"
+    },
+    "TransferableProduct": {
+      "description": "Defines the transferable asset with an identifier and economic terms.",
+      "$ref": "cdm-product-template-TransferableProduct.schema.json"
+    }
+  }
+}

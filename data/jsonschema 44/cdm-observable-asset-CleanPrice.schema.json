@@ -1,0 +1,24 @@
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "$anchor": "cdm.observable.asset",
+  "type": "object",
+  "title": "CleanPrice",
+  "description": " Class to specify the clean price of a bond in a bond valuation model, with accruals presented separately, and modelled onto the cleanPrice model in BonPriceAndYield.model in FpML.",
+  "properties": {
+    "cleanPrice": {
+      "description": "The clean price as a number.",
+      "type": "number"
+    },
+    "accruals": {
+      "description": "The accruals as a number.",
+      "type": "number"
+    },
+    "dirtyPrice": {
+      "description": "Placeholder for a calculation of dirtyPrice based on cleanPrice and accruals.",
+      "type": "string"
+    }
+  },
+  "required": [
+    "cleanPrice"
+  ]
+}

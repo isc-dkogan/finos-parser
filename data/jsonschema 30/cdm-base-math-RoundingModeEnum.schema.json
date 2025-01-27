@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "$anchor": "cdm.base.math",
+  "type": "string",
+  "title": "RoundingModeEnum",
+  "enum": [
+    "Down",
+    "Up"
+  ],
+  "oneOf": [
+    {
+      "enum": [
+        "Down"
+      ],
+      "title": "Down"
+    },
+    
+    {
+      "enum": [
+        "Up"
+      ],
+      "title": "Up"
+    }
+  ]
+}

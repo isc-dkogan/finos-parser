@@ -1,0 +1,29 @@
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "$anchor": "cdm.product.template",
+  "type": "object",
+  "title": "ContractualProduct",
+  "description": " A class to specify the contractual products' economic terms, alongside their product identification and product taxonomy. The contractual product class is meant to be used across the pre-execution, execution and (as part of the Contract) post-execution lifecycle contexts.",
+  "properties": {
+    "productTaxonomy": {
+      "description": "Specifies the product taxonomy, which is composed of a taxonomy value and a taxonomy source.",
+      "type": "array",
+      "items": {
+        "$ref": "cdm-base-staticdata-asset-common-ProductTaxonomy.schema.json"
+      },
+      "minItems": 0
+    },
+    "economicTerms": {
+      "description": "The price forming features, including payouts and provisions.",
+      "$ref": "cdm-product-template-EconomicTerms.schema.json"
+    },
+    "productIdentifier": {
+      "description": "Comprises an identifier and a source.",
+      "type": "array",
+      "items": {
+        "$ref": "cdm-base-staticdata-asset-common-ProductIdentifier.schema.json"
+      },
+      "minItems": 0
+    }
+  }
+}

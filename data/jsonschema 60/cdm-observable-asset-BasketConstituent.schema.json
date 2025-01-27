@@ -1,0 +1,65 @@
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "$anchor": "cdm.observable.asset",
+  "type": "object",
+  "title": "BasketConstituent",
+  "description": "Identifies the constituents of the basket",
+  "properties": {
+    "quantity": {
+      "description": "Specifies a quantity schedule to be associated to an individual underlier that is a basket constituent. The multiple cardinality is aligned to the one of the PriceQuantity->quantity that this quantity is referencing.",
+      "type": "array",
+      "items": {
+        "$ref": "cdm-base-math-metafields-ReferenceWithMetaNonNegativeQuantitySchedule.schema.json"
+      },
+      "minItems": 0
+    },
+    "initialValuationPrice": {
+      "description": "Specifies an initial price schedule to be associated to an individual underlier that is a basket constituent. The multiple cardinality is aligned to the one of the PriceQuantity->price that this price is referencing.",
+      "type": "array",
+      "items": {
+        "$ref": "cdm-observable-asset-metafields-ReferenceWithMetaPriceSchedule.schema.json"
+      },
+      "minItems": 0
+    },
+    "interimValuationPrice": {
+      "description": "Specifies an interim price schedule to be associated to an individual underlier that is a basket constituent. The multiple cardinality is aligned to the one of the PriceQuantity->price that this price is referencing.",
+      "type": "array",
+      "items": {
+        "$ref": "cdm-observable-asset-metafields-ReferenceWithMetaPriceSchedule.schema.json"
+      },
+      "minItems": 0
+    },
+    "finalValuationPrice": {
+      "description": "Specifies a final price schedule to be associated to an individual underlier that is a basket constituent. The multiple cardinality is aligned to the one of the PriceQuantity->price that this price is referencing.",
+      "type": "array",
+      "items": {
+        "$ref": "cdm-observable-asset-metafields-ReferenceWithMetaPriceSchedule.schema.json"
+      },
+      "minItems": 0
+    },
+    "asset": {
+      "description": "The object to be observed is an Asset, ie something that can be owned and transferred in the financial markets.",
+      "$ref": "cdm-base-staticdata-asset-common-Asset.schema.json"
+    },
+    "basket": {
+      "description": "The object to be observed is a Basket, ie a collection of Observables with an identifier and optional weightings.",
+      "$ref": "cdm-observable-asset-Basket.schema.json"
+    },
+    "index": {
+      "description": "The object to be observed is an Index, ie an observable computed on the prices, rates or valuations of a number of assets.",
+      "$ref": "cdm-base-staticdata-asset-common-Index.schema.json"
+    },
+    "productIdentifier": {
+      "description": "Comprises an identifier and a source of a Product.",
+      "type": "array",
+      "items": {
+        "$ref": "cdm-base-staticdata-asset-common-metafields-FieldWithMetaProductIdentifier.schema.json"
+      },
+      "minItems": 0
+    },
+    "rateOption": {
+      "description": "Specifies a floating rate index and tenor.",
+      "$ref": "cdm-observable-asset-metafields-FieldWithMetaFloatingRateOption.schema.json"
+    }
+  }
+}

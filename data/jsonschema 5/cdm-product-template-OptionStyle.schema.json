@@ -1,0 +1,18 @@
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "$anchor": "cdm.product.template",
+  "type": "object",
+  "title": "OptionStyle",
+  "description": "The qualification of the option style: American, Bermuda or European. FpML implements those features as part of a substitution group.",
+  "properties": {
+    "americanExercise": {
+      "$ref": "cdm-product-template-AmericanExercise.schema.json"
+    },
+    "bermudaExercise": {
+      "$ref": "cdm-product-template-BermudaExercise.schema.json"
+    },
+    "europeanExercise": {
+      "$ref": "cdm-product-template-EuropeanExercise.schema.json"
+    }
+  }
+}

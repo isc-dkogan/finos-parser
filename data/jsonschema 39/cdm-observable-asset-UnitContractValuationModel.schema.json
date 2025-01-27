@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "$anchor": "cdm.observable.asset",
+  "type": "object",
+  "title": "UnitContractValuationModel",
+  "description": " Unit contract model for security valuation, e.g. for equity, modelled onto UnitContract.model in FpML.",
+  "properties": {
+    "numberOfUnits": {
+      "description": "The number of units (index or securities).",
+      "$ref": "cdm-base-math-Quantity.schema.json"
+    },
+    "unitPrice": {
+      "description": "The price of each unit.",
+      "$ref": "cdm-observable-asset-Money.schema.json"
+    }
+  },
+  "required": [
+    "numberOfUnits",
+    "unitPrice"
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "$anchor": "cdm.base.staticdata.asset.common",
+  "type": "object",
+  "title": "IdentifiedProduct",
+  "description": "An abstract class to specify a product which terms are abstracted through reference data.",
+  "properties": {
+    "productIdentifier": {
+      "$ref": "cdm-base-staticdata-asset-common-ProductIdentifier.schema.json"
+    }
+  },
+  "required": [
+    "productIdentifier"
+  ]
+}

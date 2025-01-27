@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "$anchor": "cdm.product.collateral",
+  "type": "object",
+  "title": "CheckEligibilityResult",
+  "description": "Result for the CheckEligibilityByDetails and CheckEligibilityForProduct functions",
+  "properties": {
+    "isEligible": {
+      "description": "True if the asset is eligible",
+      "type": "boolean"
+    },
+    "matchingEligibleCriteria": {
+      "description": "Eligible Collateral Criteria that matched the eligibility query",
+      "type": "array",
+      "items": {
+        "$ref": "cdm-product-collateral-EligibleCollateralCriteria.schema.json"
+      },
+      "minItems": 1
+    },
+    "eligibilityQuery": {
+      "description": "eligibility query was was checked against the eligible collateral specification",
+      "$ref": "cdm-product-collateral-EligibilityQuery.schema.json"
+    },
+    "specification": {
+      "description": "The eligible collateral specification that was queried",
+      "$ref": "cdm-product-collateral-EligibleCollateralSpecification.schema.json"
+    }
+  },
+  "required": [
+    "isEligible",
+    "specification"
+  ]
+}

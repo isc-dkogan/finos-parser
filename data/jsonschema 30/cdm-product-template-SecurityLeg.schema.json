@@ -1,0 +1,42 @@
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "$anchor": "cdm.product.template",
+  "type": "object",
+  "title": "SecurityLeg",
+  "description": " Terms defining a security leg in a securities financing transaction, which can either be the near leg or the far leg and is closely modelled onto the nearLeg and farLeg types in FpML",
+  "properties": {
+    "buyerSeller": {
+      "description": "Whether the leg is a buyer or seller of security",
+      "$ref": "cdm-base-staticdata-party-BuyerSeller.schema.json"
+    },
+    "settlementDate": {
+      "description": "Settlement or Payment Date for the security leg",
+      "$ref": "cdm-base-datetime-AdjustableOrRelativeDate.schema.json"
+    },
+    "settlementAmount": {
+      "description": "Settlement amount for the security leg",
+      "$ref": "cdm-observable-asset-Money.schema.json"
+    },
+    "settlementCurrency": {
+      "description": "Settlement Currency for use where the Settlement Amount cannot be known in advance.",
+      "type": "string"
+    },
+    "fxRate": {
+      "description": "FX rate in case when cash settlement amount is in a different currency to the security.",
+      "$ref": "cdm-observable-asset-ExchangeRate.schema.json"
+    },
+    "deliveryDate": {
+      "description": "Delivery Date for the transaction. Delivery Date can be populated when it is not equal to the Settlement Date.",
+      "$ref": "cdm-base-datetime-AdjustableOrRelativeDate.schema.json"
+    },
+    "deliveryMethod": {
+      "description": "Specifies a delivery method for the security transaction.",
+      "$ref": "cdm-product-common-settlement-DeliveryMethodEnum.schema.json"
+    }
+  },
+  "required": [
+    "buyerSeller",
+    "settlementDate",
+    "deliveryMethod"
+  ]
+}

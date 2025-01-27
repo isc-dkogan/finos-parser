@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "$anchor": "cdm.observable.asset",
+  "type": "object",
+  "title": "ObservationSource",
+  "description": "The observation source can be composed of an curve and/or and information source.",
+  "properties": {
+    "curve": {
+      "$ref": "cdm-observable-asset-Curve.schema.json"
+    },
+    "informationSource": {
+      "$ref": "cdm-observable-asset-InformationSource.schema.json"
+    }
+  }
+}

@@ -1,0 +1,41 @@
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "$anchor": "cdm.product.collateral",
+  "type": "object",
+  "title": "EligibleCollateralCriteria",
+  "description": "Represents a set of criteria used to specify eligible collateral.",
+  "properties": {
+    "issuer": {
+      "description": "Represents a filter based criteria related to the issuer.",
+      "type": "array",
+      "items": {
+        "$ref": "cdm-product-collateral-IssuerCriteria.schema.json"
+      },
+      "minItems": 0
+    },
+    "asset": {
+      "description": "Represents a filter based on the criteria related to the asset.",
+      "type": "array",
+      "items": {
+        "$ref": "cdm-product-collateral-AssetCriteria.schema.json"
+      },
+      "minItems": 0
+    },
+    "appliesTo": {
+      "description": "Specifies which of the two counterparties the criteria applies to (either one or both counterparties). This attribute is optional, in case the applicable party is already specified elsewhere within a party election.",
+      "type": "array",
+      "items": {
+        "$ref": "cdm-base-staticdata-party-CounterpartyRoleEnum.schema.json"
+      },
+      "minItems": 0,
+      "maxItems": 2
+    },
+    "treatment": {
+      "description": "Identifies the treatment of specified collateral, e.g., haircuts,holding limits or exclusions.",
+      "$ref": "cdm-product-collateral-CollateralTreatment.schema.json"
+    }
+  },
+  "required": [
+    "treatment"
+  ]
+}

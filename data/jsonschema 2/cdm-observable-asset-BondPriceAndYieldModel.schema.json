@@ -1,0 +1,29 @@
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "$anchor": "cdm.observable.asset",
+  "type": "object",
+  "title": "BondPriceAndYieldModel",
+  "description": " Bond price and yield valuation model for the security leg in a securities financing transaction, closely modelled onto the BondPriceAndYield.model in FpML.",
+  "properties": {
+    "cleanOrDirtyPrice": {
+      "description": "Either the clean or dirty price of the bond.",
+      "$ref": "cdm-observable-asset-CleanOrDirtyPrice.schema.json"
+    },
+    "relativePrice": {
+      "description": "Bond price relative to a Benchmark.",
+      "$ref": "cdm-observable-asset-RelativePrice.schema.json"
+    },
+    "yieldToMaturity": {
+      "description": "Price specified as a yield to maturity.",
+      "type": "number"
+    },
+    "inflationFactor": {
+      "description": "The inflation factor is specified for inflation-linked products which require some additional elements to calculate prices correctly.",
+      "type": "number"
+    },
+    "allInPrice": {
+      "description": "Bond all-in-price which is a price that includes all relevant price adjustments (i.e. accrued interest, haircut or margin ratio, inflation factor,etc.). It expresses a price in terms of percentage of nominal amount.",
+      "type": "number"
+    }
+  }
+}

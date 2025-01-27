@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "$anchor": "cdm.observable.asset",
+  "type": "object",
+  "title": "SecurityValuationModel",
+  "description": " The security valuation model choice, which can either be based on nominal amount as for a bond, or on the number of contract units as for equity.",
+  "properties": {
+    "bondValuationModel": {
+      "description": "The valuation model when the security is a bond.",
+      "$ref": "cdm-observable-asset-BondValuationModel.schema.json"
+    },
+    "unitContractValuationModel": {
+      "description": "The valuation model when the security is a unit contract like equity.",
+      "$ref": "cdm-observable-asset-UnitContractValuationModel.schema.json"
+    }
+  }
+}

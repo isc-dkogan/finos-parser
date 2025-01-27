@@ -1,0 +1,40 @@
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "$anchor": "cdm.base.staticdata.asset.common",
+  "type": "object",
+  "title": "ListedDerivative",
+  "description": "A securitized derivative on another asset.",
+  "properties": {
+    "isExchangeTraded": {
+      "description": "Identifies whether the derivative is traded on an exchange.",
+      "type": "boolean"
+    },
+    "exchange": {
+      "description": " Identifies the exchange where the asset is listed, using the scheme definition http://www.fpml.org/coding-scheme/external/exchange-id-MIC-1-0",
+      "$ref": "com-rosetta-model-metafields-FieldWithMetaString.schema.json"
+    },
+    "exerciseTerms": {
+      "description": "Specifically the ExerciseDate.",
+      "$ref": "cdm-product-template-ExerciseTerms.schema.json"
+    },
+    "optionType": {
+      "description": "The type of option, ie Put or Call. Left empty if it is a Future.",
+      "$ref": "cdm-product-template-OptionTypeEnum.schema.json"
+    },
+    "strike": {
+      "description": "Specifies the strike of the option.",
+      "$ref": "cdm-product-template-OptionStrike.schema.json"
+    },
+    "identifier": {
+      "description": "Asset Identifiers are used to uniquely identify an Asset, using a specified Asset Identifier Type.",
+      "type": "array",
+      "items": {
+        "$ref": "cdm-base-staticdata-asset-common-AssetIdentifier.schema.json"
+      },
+      "minItems": 0
+    }
+  },
+  "required": [
+    "exerciseTerms"
+  ]
+}

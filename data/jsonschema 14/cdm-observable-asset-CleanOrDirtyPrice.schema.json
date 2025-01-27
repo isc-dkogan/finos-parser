@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "$anchor": "cdm.observable.asset",
+  "type": "object",
+  "title": "CleanOrDirtyPrice",
+  "description": " Class specifying the bond price as either clean or dirty in a bond valuation model.",
+  "properties": {
+    "cleanPrice": {
+      "description": "The clean price and accruals presented separately.",
+      "$ref": "cdm-observable-asset-CleanPrice.schema.json"
+    },
+    "dirtyPrice": {
+      "description": "The dirty price presented as a single number.",
+      "type": "number"
+    }
+  }
+}
