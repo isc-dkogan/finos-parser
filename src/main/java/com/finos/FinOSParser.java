@@ -12,138 +12,165 @@ import java.util.stream.Stream;
 public class FinOSParser {
     private static final ObjectMapper objectMapper = new ObjectMapper();
 
-    // Example usage in main:
-    // mvn exec:java -Dexec.mainClass="com.finos.FinOSParser" -Dexec.args="data output.sql"
     public static void main(String[] args) {
-        if (args.length != 2) {
-            System.out.println("Usage: java -jar finos-parser.jar <folder_path> <ddl_output_file>");
-            System.exit(1);
-        }
-
-        String folderPath = args[0];
-        String ddlOutputFile = args[1];
-        generateDDLForAllJson(Paths.get(folderPath), ddlOutputFile);
+        // No command-line arguments. We always look in "data/".
+        System.out.println("[INFO] Starting FinOSParser with data/ folder...");
+        processFirstDirectory(Paths.get("data"));
     }
 
     /**
-     * Walk through all directories in the given folder, find .json files,
-     * and generate DDL statements in a single output file.
+     * Finds the first subdirectory under "data" and generates DDL for all JSON files there,
+     * outputting to "output/<subdirectoryName>.sql".
      */
-    private static void generateDDLForAllJson(Path folderPath, String ddlOutputFile) {
-        try (Stream<Path> paths = Files.walk(folderPath)) {
-            paths.filter(Files::isDirectory)
-                 .forEach(dir -> processJsonFilesInDirectory(dir, ddlOutputFile));
+    private static void processFirstDirectory(Path dataFolder) {
+        System.out.println("[INFO] Searching for subdirectories in: " + dataFolder);
+
+        try (Stream<Path> paths = Files.walk(dataFolder, 1)) {
+            Optional<Path> firstDir = paths
+                .filter(Files::isDirectory)
+                .filter(path -> !path.equals(dataFolder))
+                .findFirst();
+
+            if (firstDir.isEmpty()) {
+                System.out.println("[WARN] No subdirectories found in " + dataFolder);
+                return;
+            }
+
+            Path subdirectory = firstDir.get();
+            String subdirectoryName = subdirectory.getFileName().toString();
+            System.out.println("[INFO] Found subdirectory: " + subdirectoryName);
+
+            // Create output/ folder if needed
+            Path outputDir = Paths.get("output");
+            if (!Files.exists(outputDir)) {
+                Files.createDirectory(outputDir);
+                System.out.println("[INFO] Created output/ folder");
+            }
+
+            // Our output file is named after the subdirectory
+            Path ddlOutputFile = outputDir.resolve(subdirectoryName + ".sql");
+            System.out.println("[INFO] DDL will be written to: " + ddlOutputFile);
+
+            // Process the subdirectory
+            processJsonFilesInDirectory(subdirectory, subdirectoryName, ddlOutputFile);
+
         } catch (IOException e) {
-            System.err.println("Error walking through the directory: " + e.getMessage());
+            System.err.println("[ERROR] Unable to find the first directory: " + e.getMessage());
         }
     }
 
     /**
-     * For each .json file in the specified directory, generate IRIS DDL and append it to the output file.
+     * Processes all .json files in the given directory, generating IRIS DDL and writing it
+     * to ddlOutputFile.
      */
-    private static void processJsonFilesInDirectory(Path directory, String ddlOutputFile) {
+    private static void processJsonFilesInDirectory(Path directory, String subdirectoryName, Path ddlOutputFile) {
+        System.out.println("[INFO] Processing .json files in: " + directory);
+
         try (Stream<Path> dirStream = Files.walk(directory)) {
             dirStream.filter(Files::isRegularFile)
                      .filter(path -> path.toString().toLowerCase().endsWith(".json"))
-                     .forEach(jsonFile -> generateDDLFromJson(jsonFile, ddlOutputFile));
+                     .forEach(jsonFile -> generateDDLFromJson(jsonFile, subdirectoryName, ddlOutputFile));
+
         } catch (IOException e) {
-            System.err.println("Error processing JSON files in " + directory + ": " + e.getMessage());
+            System.err.println("[ERROR] Unable to process JSON files in " + directory + ": " + e.getMessage());
         }
     }
 
     /**
-     * Generate IRIS DDL from a single JSON file and append it to the specified output file.
+     * Reads a JSON file, extracts 'properties', and builds a CREATE TABLE statement for IRIS.
      */
-    private static void generateDDLFromJson(Path jsonFile, String ddlOutputFile) {
+    private static void generateDDLFromJson(Path jsonFile, String subdirectoryName, Path ddlOutputFile) {
+        System.out.println("[INFO] Reading JSON file: " + jsonFile);
+
         try {
             JsonNode root = objectMapper.readTree(jsonFile.toFile());
             JsonNode propertiesNode = root.get("properties");
             if (propertiesNode == null || !propertiesNode.isObject()) {
-                System.err.println("No 'properties' object found in JSON: " + jsonFile);
+                System.err.println("[WARN] No 'properties' object in " + jsonFile + "; skipping.");
                 return;
             }
 
+            // Derive table name from the file name
             String tableName = deriveTableName(jsonFile);
-            String ddlStatement = buildCreateTableStatement(tableName, propertiesNode);
+            System.out.println("[INFO] Creating table for: " + tableName);
 
-            System.out.println("Appending DDL for file: " + jsonFile);
-            try (FileWriter writer = new FileWriter(ddlOutputFile, true)) {
+            String ddlStatement = buildCreateTableStatement(tableName, propertiesNode, subdirectoryName);
+
+            // Write the resulting DDL
+            try (FileWriter writer = new FileWriter(ddlOutputFile.toFile(), true)) {
                 writer.write(ddlStatement);
             }
+            System.out.println("[INFO] Wrote DDL for table: " + tableName);
 
         } catch (IOException e) {
-            System.err.println("Error processing JSON file " + jsonFile + ": " + e.getMessage());
+            System.err.println("[ERROR] Unable to read JSON file " + jsonFile + ": " + e.getMessage());
         }
     }
 
     /**
-     * Derive the table name by:
-     * 1. Removing any trailing ".json" (and optional ".schema")
-     * 2. Extracting the substring after the last dash, if present
+     * Build a CREATE TABLE statement from the properties node.
      */
-    private static String deriveTableName(Path jsonFile) {
-        String fileName = jsonFile.getFileName().toString();
+    private static String buildCreateTableStatement(String tableName, JsonNode propertiesNode, String subdirectoryName) {
+        StringBuilder ddlBuilder = new StringBuilder("CREATE TABLE ");
+        ddlBuilder.append(tableName).append(" (\n");
 
-        // Remove .json if present
-        if (fileName.endsWith(".json")) {
-            fileName = fileName.substring(0, fileName.length() - 5); // remove ".json"
-        }
-        // Optionally remove .schema if present
-        if (fileName.endsWith(".schema")) {
-            fileName = fileName.substring(0, fileName.length() - 7); // remove ".schema"
-        }
-
-        // Extract substring after the last dash
-        int lastDashIndex = fileName.lastIndexOf('-');
-        if (lastDashIndex != -1 && lastDashIndex < fileName.length() - 1) {
-            return fileName.substring(lastDashIndex + 1);
-        }
-
-        // Fallback: return the entire fileName if no dash found
-        return fileName;
-    }
-
-    /**
-     * Build a "CREATE TABLE" DDL statement given the table name and the "properties" node.
-     */
-    private static String buildCreateTableStatement(String tableName, JsonNode propertiesNode) {
-        StringBuilder ddlBuilder = new StringBuilder();
-
-        ddlBuilder.append("CREATE TABLE ").append(tableName).append(" (\n");
-
-        // Collect column definitions
-        List<String> columnDefs = new ArrayList<>();
+        List<String> columns = new ArrayList<>();
         Iterator<String> fieldNames = propertiesNode.fieldNames();
 
         while (fieldNames.hasNext()) {
             String key = fieldNames.next();
             JsonNode fieldNode = propertiesNode.get(key);
 
-            // Check for reserved words
+            // Possibly escape reserved words
             String columnName = escapeReservedWord(key);
 
-            // Determine column type
-            String columnType = determineColumnType(fieldNode);
-
-            // Handle optional description
-            String columnDef = buildColumnDefinition(columnName, columnType, fieldNode);
-            columnDefs.add(columnDef);
+            // If we see a top-level $ref, check if it's an enum or a foreign table reference
+            if (fieldNode.has("$ref")) {
+                String rawRef = fieldNode.get("$ref").asText();
+                if (isEnumReference(rawRef, subdirectoryName)) {
+                    columns.add(buildColumnDefinitionForEnum(columnName, rawRef, subdirectoryName, fieldNode));
+                } else {
+                    String refTable = deriveRefTableName(rawRef);
+                    columns.add(buildColumnDefinitionForRef(columnName, refTable, fieldNode));
+                }
+            }
+            else {
+                // Otherwise, a normal typed field
+                String columnType = determineColumnType(fieldNode);
+                columns.add(buildColumnDefinition(columnName, columnType, fieldNode));
+            }
         }
 
-        // Join columns with commas
-        ddlBuilder.append(String.join(",\n", columnDefs)).append("\n);\n\n");
+        ddlBuilder.append(String.join(",\n", columns));
+        ddlBuilder.append("\n);\n\n");
         return ddlBuilder.toString();
     }
 
-    /**
-     * Build a single column definition, optionally adding DESCRIPTION.
-     */
-    private static String buildColumnDefinition(String columnName, String columnType, JsonNode fieldNode) {
-        // For references, we might do something else, but let's keep it simple for now
-        StringBuilder def = new StringBuilder("    ").append(columnName).append(" ").append(columnType);
+    // ------------------------------------------------------------------------
+    //  Column definitions for foreign refs, enums, normal fields
+    // ------------------------------------------------------------------------
+
+    private static String buildColumnDefinitionForRef(String columnName, String refTable, JsonNode fieldNode) {
+        StringBuilder def = new StringBuilder("    ")
+            .append(columnName)
+            .append(" INT REFERENCES ")
+            .append(refTable)
+            .append("(id)");
 
         if (fieldNode.has("description")) {
-            // Escape single quotes to avoid SQL errors
+            String desc = fieldNode.get("description").asText().replace("'", "''");
+            def.append(" DESCRIPTION '").append(desc).append("'");
+        }
+        return def.toString();
+    }
+
+    private static String buildColumnDefinition(String columnName, String columnType, JsonNode fieldNode) {
+        StringBuilder def = new StringBuilder("    ")
+            .append(columnName)
+            .append(" ")
+            .append(columnType);
+
+        if (fieldNode.has("description")) {
             String desc = fieldNode.get("description").asText().replace("'", "''");
             def.append(" DESCRIPTION '").append(desc).append("'");
         }
@@ -151,73 +178,201 @@ public class FinOSParser {
     }
 
     /**
-     * Determine the IRIS column type based on the JSON field node (type, items, etc.).
+     * Creates a VARCHAR(255) with a CONSTRAINT CHECK for enum references.
      */
-    private static String determineColumnType(JsonNode fieldNode) {
-        if (!fieldNode.has("type")) {
-            return "VARCHAR"; // Default if no "type" key
+    private static String buildColumnDefinitionForEnum(String columnName, String rawRef, String subdirectoryName, JsonNode fieldNode) {
+        StringBuilder def = new StringBuilder("    ");
+        def.append(columnName).append(" VARCHAR(255)");
+
+        // Build the constraint name
+        String unquotedName = columnName.replace("\"", "");
+        String constraintName = "CHK_" + unquotedName;
+
+        List<String> enumValues = loadEnumValues(rawRef, subdirectoryName);
+        if (!enumValues.isEmpty()) {
+            def.append(" CONSTRAINT ").append(constraintName)
+               .append(" CHECK (").append(columnName).append(" IN (");
+
+            String joined = String.join(",", wrapInQuotes(enumValues));
+            def.append(joined).append("))");
         }
 
-        String type = fieldNode.get("type").asText();
-        switch (type.toLowerCase()) {
-            case "string":
-                return "VARCHAR(255)";
-            case "integer":
-                return "INT";
-            case "number":
-                return "FLOAT";
-            case "boolean":
-                return "BOOLEAN";
-            case "object":
-                return "JSON";
-            case "array":
-                // IRIS LIST type
-                return deriveListType(fieldNode);
-            default:
-                return "VARCHAR"; // Default type
+        if (fieldNode.has("description")) {
+            String desc = fieldNode.get("description").asText().replace("'", "''");
+            def.append(" DESCRIPTION '").append(desc).append("'");
         }
+        return def.toString();
     }
 
-    /**
-     * For array types, IRIS supports LIST(elementType).
-     * e.g., array of string -> LIST(VARCHAR(255))
-     */
+    // ------------------------------------------------------------------------
+    //  Handling arrays
+    // ------------------------------------------------------------------------
+
+    private static String determineColumnType(JsonNode fieldNode) {
+        if (!fieldNode.has("type")) {
+            return "VARCHAR";
+        }
+        String type = fieldNode.get("type").asText().toLowerCase();
+
+        return switch (type) {
+            case "string"  -> "VARCHAR(255)";
+            case "integer" -> "INT";
+            case "number"  -> "FLOAT";
+            case "boolean" -> "BOOLEAN";
+            case "object"  -> "JSON";
+            case "array"   -> deriveListType(fieldNode);
+            default        -> "VARCHAR";
+        };
+    }
+
     private static String deriveListType(JsonNode arrayNode) {
-        if (arrayNode.has("items") && arrayNode.get("items").has("type")) {
-            String itemType = arrayNode.get("items").get("type").asText().toLowerCase();
-            switch (itemType) {
-                case "integer":
-                    return "LIST(INT)";
-                case "number":
-                    return "LIST(FLOAT)";
-                case "boolean":
-                    return "LIST(BOOLEAN)";
-                case "string":
-                    return "LIST(VARCHAR(255))";
-                case "object":
-                    return "LIST(JSON)";
-                default:
-                    return "LIST(VARCHAR)";
+        if (arrayNode.has("items")) {
+            JsonNode itemsNode = arrayNode.get("items");
+            if (itemsNode.has("$ref")) {
+                String fullRef = itemsNode.get("$ref").asText();
+                return "LIST(INT) /* references " + deriveRefTableName(fullRef) + " */";
+            } else if (itemsNode.has("type")) {
+                String itemType = itemsNode.get("type").asText().toLowerCase();
+                return switch (itemType) {
+                    case "integer" -> "LIST(INT)";
+                    case "number"  -> "LIST(FLOAT)";
+                    case "boolean" -> "LIST(BOOLEAN)";
+                    case "string"  -> "LIST(VARCHAR(255))";
+                    case "object"  -> "LIST(JSON)";
+                    default        -> "LIST(VARCHAR)";
+                };
             }
         }
-        // No "items" type specified
         return "LIST(VARCHAR)";
     }
 
+    // ------------------------------------------------------------------------
+    //  Distinguish enum from non-enum references
+    // ------------------------------------------------------------------------
+
+    private static boolean isEnumReference(String rawRef, String subdirectoryName) {
+        // We won't print about the enum creation here, as requested
+        Path foundFile = findSchemaFile(rawRef, subdirectoryName);
+        if (foundFile == null) {
+            return false;
+        }
+
+        try {
+            JsonNode root = objectMapper.readTree(foundFile.toFile());
+            if (root.has("type")
+                && "string".equalsIgnoreCase(root.get("type").asText())
+                && root.has("enum")
+                && root.get("enum").isArray()) {
+                return true;
+            }
+        } catch (IOException e) {
+            System.err.println("[ERROR] Reading possible enum file " + foundFile + ": " + e.getMessage());
+        }
+        return false;
+    }
+
+    private static String deriveRefTableName(String rawRef) {
+        // "cdm-base-math-ArithmeticOperationEnum.schema.json" -> "ArithmeticOperationEnum"
+        Path p = Paths.get(rawRef).getFileName();
+        if (p == null) return rawRef;
+
+        String refFileName = p.toString();
+        if (refFileName.endsWith(".json")) {
+            refFileName = refFileName.substring(0, refFileName.length() - 5);
+        }
+        if (refFileName.endsWith(".schema")) {
+            refFileName = refFileName.substring(0, refFileName.length() - 7);
+        }
+        int dashIndex = refFileName.lastIndexOf('-');
+        if (dashIndex != -1 && dashIndex < refFileName.length() - 1) {
+            return refFileName.substring(dashIndex + 1);
+        }
+        return refFileName;
+    }
+
+    // ------------------------------------------------------------------------
+    //  Load enum values from the subdirectory
+    // ------------------------------------------------------------------------
+
+    private static List<String> loadEnumValues(String rawRef, String subdirectoryName) {
+        List<String> results = new ArrayList<>();
+        Path foundFile = findSchemaFile(rawRef, subdirectoryName);
+        if (foundFile == null) {
+            return results;
+        }
+        try {
+            JsonNode root = objectMapper.readTree(foundFile.toFile());
+            if (root.has("enum") && root.get("enum").isArray()) {
+                for (JsonNode val : root.get("enum")) {
+                    if (val.isTextual()) {
+                        results.add(val.asText());
+                    }
+                }
+            }
+        } catch (IOException e) {
+            System.err.println("[ERROR] Loading enum from " + foundFile + ": " + e.getMessage());
+        }
+        return results;
+    }
+
     /**
-     * Escape reserved or problematic words for IRIS by quoting them.
+     * Expects the file to be at data/<subdirectoryName>/<rawRef>.
+     */
+    private static Path findSchemaFile(String rawRef, String subdirectoryName) {
+        Path candidate = Paths.get("data", subdirectoryName, rawRef);
+        if (Files.exists(candidate)) {
+            return candidate;
+        }
+        return null;
+    }
+
+    // ------------------------------------------------------------------------
+    //  Utility for quoting strings
+    // ------------------------------------------------------------------------
+
+    private static List<String> wrapInQuotes(List<String> items) {
+        List<String> quoted = new ArrayList<>();
+        for (String item : items) {
+            String safe = item.replace("'", "''");
+            quoted.add("'" + safe + "'");
+        }
+        return quoted;
+    }
+
+    // ------------------------------------------------------------------------
+    //  Reserved Words
+    // ------------------------------------------------------------------------
+
+    /**
+     * We quote the word if it's in our reserved words set, which now includes:
+     * "value", "after", and "block" as requested.
      */
     private static String escapeReservedWord(String word) {
-        // Subset of IRIS reserved words
         Set<String> reservedWords = Set.of(
             "address", "version", "user", "group", "index",
-            "table", "column", "order", "select", "desc"
-            // Add more as needed
+            "table", "column", "order", "select", "desc",
+            "value", "after", "block"
         );
-        // Use double quotes if it's reserved
-        if (reservedWords.contains(word.toLowerCase())) {
-            return "\"" + word + "\"";
+        return reservedWords.contains(word.toLowerCase()) ? "\"" + word + "\"" : word;
+    }
+
+    // ------------------------------------------------------------------------
+    //  Derive table name from a JSON file path
+    // ------------------------------------------------------------------------
+
+    private static String deriveTableName(Path jsonFile) {
+        // e.g. cdm-base-math-ArithmeticOperationEnum.schema.json -> ArithmeticOperationEnum
+        String fileName = jsonFile.getFileName().toString();
+        if (fileName.endsWith(".json")) {
+            fileName = fileName.substring(0, fileName.length() - 5);
         }
-        return word;
+        if (fileName.endsWith(".schema")) {
+            fileName = fileName.substring(0, fileName.length() - 7);
+        }
+        int dashIndex = fileName.lastIndexOf('-');
+        if (dashIndex != -1 && dashIndex < fileName.length() - 1) {
+            return fileName.substring(dashIndex + 1);
+        }
+        return fileName;
     }
 }
