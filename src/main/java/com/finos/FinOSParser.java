@@ -13,15 +13,10 @@ public class FinOSParser {
     private static final ObjectMapper objectMapper = new ObjectMapper();
 
     public static void main(String[] args) {
-        // No command-line arguments. We always look in "data/".
         System.out.println("[INFO] Starting FinOSParser with data/ folder...");
         processFirstDirectory(Paths.get("data"));
     }
 
-    /**
-     * Finds the first subdirectory under "data" and generates DDL for all JSON files there,
-     * outputting to "output/<subdirectoryName>.sql".
-     */
     private static void processFirstDirectory(Path dataFolder) {
         System.out.println("[INFO] Searching for subdirectories in: " + dataFolder);
 
@@ -51,7 +46,6 @@ public class FinOSParser {
             Path ddlOutputFile = outputDir.resolve(subdirectoryName + ".sql");
             System.out.println("[INFO] DDL will be written to: " + ddlOutputFile);
 
-            // Process the subdirectory
             processJsonFilesInDirectory(subdirectory, subdirectoryName, ddlOutputFile);
 
         } catch (IOException e) {
@@ -59,10 +53,6 @@ public class FinOSParser {
         }
     }
 
-    /**
-     * Processes all .json files in the given directory, generating IRIS DDL and writing it
-     * to ddlOutputFile.
-     */
     private static void processJsonFilesInDirectory(Path directory, String subdirectoryName, Path ddlOutputFile) {
         System.out.println("[INFO] Processing .json files in: " + directory);
 
@@ -70,33 +60,40 @@ public class FinOSParser {
             dirStream.filter(Files::isRegularFile)
                      .filter(path -> path.toString().toLowerCase().endsWith(".json"))
                      .forEach(jsonFile -> generateDDLFromJson(jsonFile, subdirectoryName, ddlOutputFile));
-
         } catch (IOException e) {
             System.err.println("[ERROR] Unable to process JSON files in " + directory + ": " + e.getMessage());
         }
     }
 
-    /**
-     * Reads a JSON file, extracts 'properties', and builds a CREATE TABLE statement for IRIS.
-     */
     private static void generateDDLFromJson(Path jsonFile, String subdirectoryName, Path ddlOutputFile) {
         System.out.println("[INFO] Reading JSON file: " + jsonFile);
 
         try {
             JsonNode root = objectMapper.readTree(jsonFile.toFile());
             JsonNode propertiesNode = root.get("properties");
+
             if (propertiesNode == null || !propertiesNode.isObject()) {
                 System.err.println("[WARN] No 'properties' object in " + jsonFile + "; skipping.");
                 return;
             }
 
-            // Derive table name from the file name
-            String tableName = deriveTableName(jsonFile);
+            if (!root.has("title")) {
+                System.err.println("[WARN] No 'title' found in JSON: " + jsonFile + "; skipping.");
+                return;
+            }
+            String tableName = root.get("title").asText();
             System.out.println("[INFO] Creating table for: " + tableName);
 
-            String ddlStatement = buildCreateTableStatement(tableName, propertiesNode, subdirectoryName);
+            Set<String> requiredFields = new HashSet<>();
+            JsonNode requiredNode = root.get("required");
+            if (requiredNode != null && requiredNode.isArray()) {
+                for (JsonNode fieldName : requiredNode) {
+                    requiredFields.add(fieldName.asText());
+                }
+            }
 
-            // Write the resulting DDL
+            String ddlStatement = buildCreateTableStatement(tableName, propertiesNode, requiredFields, subdirectoryName);
+
             try (FileWriter writer = new FileWriter(ddlOutputFile.toFile(), true)) {
                 writer.write(ddlStatement);
             }
@@ -107,10 +104,12 @@ public class FinOSParser {
         }
     }
 
-    /**
-     * Build a CREATE TABLE statement from the properties node.
-     */
-    private static String buildCreateTableStatement(String tableName, JsonNode propertiesNode, String subdirectoryName) {
+    private static String buildCreateTableStatement(
+            String tableName,
+            JsonNode propertiesNode,
+            Set<String> requiredFields,
+            String subdirectoryName) {
+
         StringBuilder ddlBuilder = new StringBuilder("CREATE TABLE ");
         ddlBuilder.append(tableName).append(" (\n");
 
@@ -121,23 +120,21 @@ public class FinOSParser {
             String key = fieldNames.next();
             JsonNode fieldNode = propertiesNode.get(key);
 
-            // Possibly escape reserved words
             String columnName = escapeReservedWord(key);
 
-            // If we see a top-level $ref, check if it's an enum or a foreign table reference
             if (fieldNode.has("$ref")) {
                 String rawRef = fieldNode.get("$ref").asText();
                 if (isEnumReference(rawRef, subdirectoryName)) {
                     columns.add(buildColumnDefinitionForEnum(columnName, rawRef, subdirectoryName, fieldNode));
                 } else {
-                    String refTable = deriveRefTableName(rawRef);
-                    columns.add(buildColumnDefinitionForRef(columnName, refTable, fieldNode));
+                    String refTable = getRefTableName(rawRef, subdirectoryName);
+                    boolean isRequired = requiredFields.contains(key);
+                    columns.add(buildColumnDefinitionForRef(columnName, refTable, fieldNode, isRequired));
                 }
-            }
-            else {
-                // Otherwise, a normal typed field
+            } else {
                 String columnType = determineColumnType(fieldNode);
-                columns.add(buildColumnDefinition(columnName, columnType, fieldNode));
+                boolean isRequired = requiredFields.contains(key);
+                columns.add(buildColumnDefinition(columnName, columnType, fieldNode, isRequired));
             }
         }
 
@@ -146,45 +143,82 @@ public class FinOSParser {
         return ddlBuilder.toString();
     }
 
-    // ------------------------------------------------------------------------
-    //  Column definitions for foreign refs, enums, normal fields
-    // ------------------------------------------------------------------------
-
-    private static String buildColumnDefinitionForRef(String columnName, String refTable, JsonNode fieldNode) {
-        StringBuilder def = new StringBuilder("    ")
-            .append(columnName)
-            .append(" INT REFERENCES ")
-            .append(refTable)
-            .append("(id)");
-
-        if (fieldNode.has("description")) {
-            String desc = fieldNode.get("description").asText().replace("'", "''");
-            def.append(" DESCRIPTION '").append(desc).append("'");
+    private static String getRefTableName(String rawRef, String subdirectoryName) {
+        // Find the file path for the referenced schema
+        Path foundFile = findSchemaFile(rawRef, subdirectoryName);
+        if (foundFile == null) {
+            return rawRef; // Use the raw reference as a fallback
         }
-        return def.toString();
+
+        try {
+            JsonNode root = objectMapper.readTree(foundFile.toFile());
+            // Use the "title" property if it exists
+            if (root.has("title")) {
+                return root.get("title").asText();
+            }
+        } catch (IOException e) {
+            System.err.println("[ERROR] Unable to read referenced file for title: " + foundFile + ": " + e.getMessage());
+        }
+
+        return rawRef; // Fallback if "title" is not present
     }
 
-    private static String buildColumnDefinition(String columnName, String columnType, JsonNode fieldNode) {
-        StringBuilder def = new StringBuilder("    ")
-            .append(columnName)
-            .append(" ")
-            .append(columnType);
-
-        if (fieldNode.has("description")) {
-            String desc = fieldNode.get("description").asText().replace("'", "''");
-            def.append(" DESCRIPTION '").append(desc).append("'");
+    private static String determineColumnType(JsonNode fieldNode) {
+        // If the "type" property is missing, default to VARCHAR
+        if (!fieldNode.has("type")) {
+            return "VARCHAR(255)";
         }
-        return def.toString();
+
+        String type = fieldNode.get("type").asText().toLowerCase();
+
+        return switch (type) {
+            case "string"  -> "VARCHAR(255)";
+            case "integer" -> "INT";
+            case "number"  -> "FLOAT";
+            case "boolean" -> "BOOLEAN";
+            case "object"  -> "JSON";
+            case "array"   -> deriveListType(fieldNode); // Handle arrays separately
+            default        -> "VARCHAR(255)"; // Default to VARCHAR for unknown types
+        };
     }
 
-    /**
-     * Creates a VARCHAR(255) with a CONSTRAINT CHECK for enum references.
-     */
-    private static String buildColumnDefinitionForEnum(String columnName, String rawRef, String subdirectoryName, JsonNode fieldNode) {
+    private static String deriveListType(JsonNode arrayNode) {
+        // Check if the "items" property exists in the array definition
+        if (arrayNode.has("items")) {
+            JsonNode itemsNode = arrayNode.get("items");
+
+            // If the items have a $ref, assume it references another table
+            if (itemsNode.has("$ref")) {
+                String refTable = getRefTableName(itemsNode.get("$ref").asText(), ""); // Provide subdirectory if needed
+                return "LIST(INT) /* references " + refTable + " */";
+            }
+            // If the items have a "type" property, infer the list's type
+            else if (itemsNode.has("type")) {
+                String itemType = itemsNode.get("type").asText().toLowerCase();
+                return switch (itemType) {
+                    case "integer" -> "LIST(INT)";
+                    case "number"  -> "LIST(FLOAT)";
+                    case "boolean" -> "LIST(BOOLEAN)";
+                    case "string"  -> "LIST(VARCHAR(255))";
+                    case "object"  -> "LIST(JSON)";
+                    default        -> "LIST(VARCHAR(255))"; // Default for unknown types
+                };
+            }
+        }
+
+        // If "items" is missing or undefined, assume a generic list of VARCHAR
+        return "LIST(VARCHAR(255))";
+    }
+
+    private static String buildColumnDefinitionForEnum(
+            String columnName,
+            String rawRef,
+            String subdirectoryName,
+            JsonNode fieldNode) {
+
         StringBuilder def = new StringBuilder("    ");
         def.append(columnName).append(" VARCHAR(255)");
 
-        // Build the constraint name
         String unquotedName = columnName.replace("\"", "");
         String constraintName = "CHK_" + unquotedName;
 
@@ -204,59 +238,46 @@ public class FinOSParser {
         return def.toString();
     }
 
-    // ------------------------------------------------------------------------
-    //  Handling arrays
-    // ------------------------------------------------------------------------
+    private static String buildColumnDefinition(String columnName, String columnType, JsonNode fieldNode, boolean isRequired) {
+        StringBuilder def = new StringBuilder("    ").append(columnName).append(" ").append(columnType);
 
-    private static String determineColumnType(JsonNode fieldNode) {
-        if (!fieldNode.has("type")) {
-            return "VARCHAR";
+        if (isRequired) {
+            def.append(" NOT NULL");
         }
-        String type = fieldNode.get("type").asText().toLowerCase();
 
-        return switch (type) {
-            case "string"  -> "VARCHAR(255)";
-            case "integer" -> "INT";
-            case "number"  -> "FLOAT";
-            case "boolean" -> "BOOLEAN";
-            case "object"  -> "JSON";
-            case "array"   -> deriveListType(fieldNode);
-            default        -> "VARCHAR";
-        };
+        if (fieldNode.has("description")) {
+            String desc = fieldNode.get("description").asText().replace("'", "''");
+            def.append(" DESCRIPTION '").append(desc).append("'");
+        }
+        return def.toString();
     }
 
-    private static String deriveListType(JsonNode arrayNode) {
-        if (arrayNode.has("items")) {
-            JsonNode itemsNode = arrayNode.get("items");
-            if (itemsNode.has("$ref")) {
-                String fullRef = itemsNode.get("$ref").asText();
-                return "LIST(INT) /* references " + deriveRefTableName(fullRef) + " */";
-            } else if (itemsNode.has("type")) {
-                String itemType = itemsNode.get("type").asText().toLowerCase();
-                return switch (itemType) {
-                    case "integer" -> "LIST(INT)";
-                    case "number"  -> "LIST(FLOAT)";
-                    case "boolean" -> "LIST(BOOLEAN)";
-                    case "string"  -> "LIST(VARCHAR(255))";
-                    case "object"  -> "LIST(JSON)";
-                    default        -> "LIST(VARCHAR)";
-                };
-            }
-        }
-        return "LIST(VARCHAR)";
-    }
+    private static String buildColumnDefinitionForRef(String columnName, String refTable, JsonNode fieldNode, boolean isRequired) {
+        StringBuilder def = new StringBuilder();
 
-    // ------------------------------------------------------------------------
-    //  Distinguish enum from non-enum references
-    // ------------------------------------------------------------------------
+        // Define the column itself
+        def.append("    ").append(columnName).append(" INT");
+        if (isRequired) {
+            def.append(" NOT NULL");
+        }
+        if (fieldNode.has("description")) {
+            String desc = fieldNode.get("description").asText().replace("'", "''");
+            def.append(" DESCRIPTION '").append(desc).append("'");
+        }
+        def.append(",\n");
+
+        // Add the foreign key constraint separately
+        def.append("    FOREIGN KEY (").append(columnName).append(") REFERENCES ")
+           .append(refTable).append("(ID)");
+
+        return def.toString();
+    }
 
     private static boolean isEnumReference(String rawRef, String subdirectoryName) {
-        // We won't print about the enum creation here, as requested
         Path foundFile = findSchemaFile(rawRef, subdirectoryName);
         if (foundFile == null) {
             return false;
         }
-
         try {
             JsonNode root = objectMapper.readTree(foundFile.toFile());
             if (root.has("type")
@@ -270,29 +291,6 @@ public class FinOSParser {
         }
         return false;
     }
-
-    private static String deriveRefTableName(String rawRef) {
-        // "cdm-base-math-ArithmeticOperationEnum.schema.json" -> "ArithmeticOperationEnum"
-        Path p = Paths.get(rawRef).getFileName();
-        if (p == null) return rawRef;
-
-        String refFileName = p.toString();
-        if (refFileName.endsWith(".json")) {
-            refFileName = refFileName.substring(0, refFileName.length() - 5);
-        }
-        if (refFileName.endsWith(".schema")) {
-            refFileName = refFileName.substring(0, refFileName.length() - 7);
-        }
-        int dashIndex = refFileName.lastIndexOf('-');
-        if (dashIndex != -1 && dashIndex < refFileName.length() - 1) {
-            return refFileName.substring(dashIndex + 1);
-        }
-        return refFileName;
-    }
-
-    // ------------------------------------------------------------------------
-    //  Load enum values from the subdirectory
-    // ------------------------------------------------------------------------
 
     private static List<String> loadEnumValues(String rawRef, String subdirectoryName) {
         List<String> results = new ArrayList<>();
@@ -315,9 +313,6 @@ public class FinOSParser {
         return results;
     }
 
-    /**
-     * Expects the file to be at data/<subdirectoryName>/<rawRef>.
-     */
     private static Path findSchemaFile(String rawRef, String subdirectoryName) {
         Path candidate = Paths.get("data", subdirectoryName, rawRef);
         if (Files.exists(candidate)) {
@@ -326,27 +321,6 @@ public class FinOSParser {
         return null;
     }
 
-    // ------------------------------------------------------------------------
-    //  Utility for quoting strings
-    // ------------------------------------------------------------------------
-
-    private static List<String> wrapInQuotes(List<String> items) {
-        List<String> quoted = new ArrayList<>();
-        for (String item : items) {
-            String safe = item.replace("'", "''");
-            quoted.add("'" + safe + "'");
-        }
-        return quoted;
-    }
-
-    // ------------------------------------------------------------------------
-    //  Reserved Words
-    // ------------------------------------------------------------------------
-
-    /**
-     * We quote the word if it's in our reserved words set, which now includes:
-     * "value", "after", and "block" as requested.
-     */
     private static String escapeReservedWord(String word) {
         Set<String> reservedWords = Set.of(
             "address", "version", "user", "group", "index",
@@ -356,23 +330,12 @@ public class FinOSParser {
         return reservedWords.contains(word.toLowerCase()) ? "\"" + word + "\"" : word;
     }
 
-    // ------------------------------------------------------------------------
-    //  Derive table name from a JSON file path
-    // ------------------------------------------------------------------------
-
-    private static String deriveTableName(Path jsonFile) {
-        // e.g. cdm-base-math-ArithmeticOperationEnum.schema.json -> ArithmeticOperationEnum
-        String fileName = jsonFile.getFileName().toString();
-        if (fileName.endsWith(".json")) {
-            fileName = fileName.substring(0, fileName.length() - 5);
+    private static List<String> wrapInQuotes(List<String> items) {
+        List<String> quoted = new ArrayList<>();
+        for (String item : items) {
+            String safe = item.replace("'", "''");
+            quoted.add("'" + safe + "'");
         }
-        if (fileName.endsWith(".schema")) {
-            fileName = fileName.substring(0, fileName.length() - 7);
-        }
-        int dashIndex = fileName.lastIndexOf('-');
-        if (dashIndex != -1 && dashIndex < fileName.length() - 1) {
-            return fileName.substring(dashIndex + 1);
-        }
-        return fileName;
+        return quoted;
     }
 }
