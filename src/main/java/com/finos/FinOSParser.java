@@ -21,7 +21,7 @@ public class FinOSParser {
      *              PROCESSING DATA
      ******************************************************/
 
-    private static void processFirstDirectory(Path dataFolder) {
+     private static void processFirstDirectory(Path dataFolder) {
         System.out.println("[INFO] Searching for subdirectories in: " + dataFolder);
 
         try (Stream<Path> paths = Files.walk(dataFolder, 1)) {
@@ -39,35 +39,45 @@ public class FinOSParser {
             String subdirectoryName = subdirectory.getFileName().toString();
             System.out.println("[INFO] Found subdirectory: " + subdirectoryName);
 
-            Path outputDir = Paths.get("output");
+            // Extract version from folder name
+            String version = subdirectoryName.replace("cdm-json-schema-", "");
+
+            Path outputDir = Paths.get("output", subdirectoryName);
             if (!Files.exists(outputDir)) {
-                Files.createDirectory(outputDir);
-                System.out.println("[INFO] Created output/ folder");
+                Files.createDirectories(outputDir);
+                System.out.println("[INFO] Created output directory: " + outputDir);
             }
 
-            Path ddlOutputFile = outputDir.resolve(subdirectoryName + ".sql");
-            System.out.println("[INFO] DDL will be written to: " + ddlOutputFile);
+            Path ddlOutputFile = outputDir.resolve(version + "_ddl.sql");
+            Path constraintsOutputFile = outputDir.resolve(version + "_constraints.sql");
+            Path insertsOutputFile = outputDir.resolve(version + "_inserts.sql");
+            Path primaryKeysOutputFile = outputDir.resolve(version + "_primary_keys.sql");
 
-            processJsonFilesInDirectory(subdirectory, subdirectoryName, ddlOutputFile);
+            System.out.println("[INFO] DDL will be written to: " + ddlOutputFile);
+            System.out.println("[INFO] Constraints will be written to: " + constraintsOutputFile);
+
+            processJsonFilesInDirectory(subdirectory, subdirectoryName, ddlOutputFile, constraintsOutputFile, insertsOutputFile);
 
         } catch (IOException e) {
             System.err.println("[ERROR] Unable to find the first directory: " + e.getMessage());
         }
     }
 
-    private static void processJsonFilesInDirectory(Path directory, String subdirectoryName, Path ddlOutputFile) {
+
+    private static void processJsonFilesInDirectory(Path directory, String subdirectoryName, Path ddlOutputFile, Path constraintsOutputFile, Path insertsOutputFile) {
         System.out.println("[INFO] Processing .json files in: " + directory);
 
         try (Stream<Path> dirStream = Files.walk(directory)) {
             dirStream.filter(Files::isRegularFile)
                      .filter(path -> path.toString().toLowerCase().endsWith(".json"))
-                     .forEach(jsonFile -> generateDDLFromJson(jsonFile, subdirectoryName, ddlOutputFile));
+                     .forEach(jsonFile -> generateDDLFromJson(jsonFile, subdirectoryName, ddlOutputFile, constraintsOutputFile, insertsOutputFile));
         } catch (IOException e) {
             System.err.println("[ERROR] Unable to process JSON files in " + directory + ": " + e.getMessage());
         }
     }
 
-    private static void generateDDLFromJson(Path jsonFile, String subdirectoryName, Path ddlOutputFile) {
+
+    private static void generateDDLFromJson(Path jsonFile, String subdirectoryName, Path ddlOutputFile, Path constraintsOutputFile, Path insertsOutputFile) {
         System.out.println("[INFO] Reading JSON file: " + jsonFile);
 
         try {
@@ -78,7 +88,8 @@ public class FinOSParser {
                 return;
             }
 
-            String schemaName = root.get("$anchor").asText().replace(".", "_");
+            // Extract schemaName from $anchor (ensuring it's properly formatted)
+            String schemaName = root.has("$anchor") ? root.get("$anchor").asText().replace(".", "_") : "default_schema";
             String tableName = root.get("title").asText();
             String fullTableName = schemaName + "." + tableName;
             System.out.println("[INFO] Creating table for: " + fullTableName);
@@ -95,22 +106,14 @@ public class FinOSParser {
 
             JsonNode propertiesNode = root.get("properties");
             if (propertiesNode == null || !propertiesNode.isObject()) {
-
                 if (root.has("enum") && root.get("enum").isArray()) {
-                    List<String> enumValues = new ArrayList<>();
-                    for (JsonNode val : root.get("enum")) {
-                        if (val.isTextual()) {
-                            enumValues.add(val.asText());
-                        }
-                    }
-
-                    ddlStatements.append(buildCreateTableStatementForEnum(fullTableName, root));
+                    ddlStatements.append(buildCreateTableStatementForEnum(schemaName, tableName, fullTableName, root, insertsOutputFile));
                 } else {
                     System.err.println("[WARN] No 'properties' object in " + jsonFile + "; skipping.");
                     return;
                 }
             } else {
-                ddlStatements.append(buildCreateTableStatement(fullTableName, propertiesNode, requiredFields, subdirectoryName));
+                ddlStatements.append(buildCreateTableStatement(fullTableName, propertiesNode, requiredFields, subdirectoryName, constraintsOutputFile, schemaName));
             }
 
             try (FileWriter writer = new FileWriter(ddlOutputFile.toFile(), true)) {
@@ -123,6 +126,7 @@ public class FinOSParser {
         }
     }
 
+
     private static String getRefTableName(String rawRef, String subdirectoryName) {
         Path foundFile = findSchemaFile(rawRef, subdirectoryName);
         if (foundFile == null) {
@@ -132,9 +136,10 @@ public class FinOSParser {
         try {
             JsonNode root = objectMapper.readTree(foundFile.toFile());
 
-            if (root.has("title")) {
-                return root.get("title").asText();
-            }
+            String schemaName = root.has("$anchor") ? root.get("$anchor").asText().replace(".", "_") : "default_schema";
+            String tableName = root.get("title").asText();
+            return schemaName + "." + tableName;
+
         } catch (IOException e) {
             System.err.println("[ERROR] Unable to read referenced file for title: " + foundFile + ": " + e.getMessage());
         }
@@ -146,13 +151,13 @@ public class FinOSParser {
      *               BUILDING CREATE TABLE STATEMENTS
      ******************************************************/
 
-    private static String buildCreateTableStatement(String tableName, JsonNode propertiesNode, Set<String> requiredFields, String subdirectoryName) {
-        StringBuilder ddlBuilder = new StringBuilder("CREATE TABLE ");
+     private static String buildCreateTableStatement(String tableName, JsonNode propertiesNode, Set<String> requiredFields, String subdirectoryName, Path constraintsOutputFile, String schemaName) {
+        StringBuilder ddlBuilder = new StringBuilder("CREATE TABLE @");
         ddlBuilder.append(tableName).append(" (\n");
 
         List<String> columns = new ArrayList<>();
 
-        columns.add("    %PUBLICROWID");
+        columns.add("    " + tableName + "_id NOT NULL");
 
         Iterator<String> fieldNames = propertiesNode.fieldNames();
 
@@ -164,13 +169,14 @@ public class FinOSParser {
 
             if (fieldNode.has("$ref")) {
                 String rawRef = fieldNode.get("$ref").asText();
-                if (isEnumReference(rawRef, subdirectoryName)) {
-                    columns.add(buildColumnDefinitionForEnum(columnName, rawRef, subdirectoryName, fieldNode));
-                } else {
-                    String refTable = getRefTableName(rawRef, subdirectoryName);
-                    boolean isRequired = requiredFields.contains(key);
-                    columns.add(buildColumnDefinitionForRef(columnName, refTable, fieldNode, isRequired));
-                }
+
+                String refTable = getRefTableName(rawRef, subdirectoryName);
+                boolean isRequired = requiredFields.contains(key);
+
+                columns.add(buildColumnDefinitionForRef(columnName, fieldNode, isRequired));
+
+                String alterTableStatement = buildForeignKeyConstraint(schemaName, tableName, columnName, refTable);
+                writeConstraintToFile(constraintsOutputFile, alterTableStatement);
             } else {
                 String columnType = determineColumnType(fieldNode);
                 boolean isRequired = requiredFields.contains(key);
@@ -183,18 +189,17 @@ public class FinOSParser {
         return ddlBuilder.toString();
     }
 
-    private static String buildCreateTableStatementForEnum(String fullTableName, JsonNode root) {
+    private static String buildCreateTableStatementForEnum(String schemaName, String tableName, String fullTableName, JsonNode root, Path insertsOutputFile) {
         StringBuilder ddl = new StringBuilder();
-        String columnName = fullTableName.substring(fullTableName.lastIndexOf('.') + 1);
 
         String columnType = "VARCHAR(255)";
         if (root.has("type") && root.get("type").isTextual()) {
             columnType = determineColumnType(root);
         }
 
-        ddl.append("CREATE TABLE ").append(fullTableName).append(" (\n");
-        ddl.append("    ID INT PRIMARY KEY,\n");
-        ddl.append("    ").append(columnName).append(" ").append(columnType).append(" UNIQUE NOT NULL,\n");
+        ddl.append("CREATE TABLE @").append(fullTableName).append(" (\n");
+        ddl.append("    " + tableName + "_id NOT NULL,\n");
+        ddl.append("    ").append(tableName).append(" ").append(columnType).append(" UNIQUE NOT NULL,\n");
         ddl.append("    Description VARCHAR(255)\n");
         ddl.append(");\n\n");
 
@@ -218,22 +223,8 @@ public class FinOSParser {
             }
         }
 
-        int rowIndex = 1;
-        for (String value : enumValues) {
-            String description = enumDescriptions.getOrDefault(value, null);
-            ddl.append("INSERT INTO ").append(fullTableName)
-               .append(" (ID, ").append(columnName).append(", Description) VALUES (")
-               .append(rowIndex).append(", '")
-               .append(value.replace("'", "''")).append("', ");
-            if (description != null) {
-                ddl.append("'").append(description).append("'");
-            } else {
-                ddl.append("NULL");
-            }
-            ddl.append(");\n");
-
-            rowIndex++;
-        }
+        String insertStatements = populateEnumTableStatements(schemaName, tableName, enumValues, enumDescriptions);
+        writeInsertsToFile(insertsOutputFile, insertStatements);
 
         ddl.append("\n");
         return ddl.toString();
@@ -258,42 +249,70 @@ public class FinOSParser {
         return def.toString();
     }
 
-    private static String buildColumnDefinitionForRef(String columnName, String refTable, JsonNode fieldNode, boolean isRequired) {
+    private static String buildColumnDefinitionForRef(String columnName, JsonNode fieldNode, boolean isRequired) {
         StringBuilder def = new StringBuilder();
-
         def.append("    ").append(columnName).append(" INT");
+
         if (isRequired) {
             def.append(" NOT NULL");
         }
+
         if (fieldNode.has("description")) {
             String desc = fieldNode.get("description").asText().replace("'", "''");
             def.append(" %DESCRIPTION '").append(desc).append("'");
         }
-        def.append(",\n");
-
-        def.append("    CONSTRAINT ").append(columnName).append("FK")
-           .append(" FOREIGN KEY (").append(columnName).append(") REFERENCES ")
-           .append(refTable).append("(ID)");
 
         return def.toString();
     }
 
-    private static String buildColumnDefinitionForEnum(String columnName, String rawRef, String subdirectoryName, JsonNode fieldNode) {
-        String enumTable = getRefTableName(rawRef, subdirectoryName); // Resolve the correct enum table name
+    /******************************************************
+     *               FOREIGN KEYS ALTER TABLE
+     ******************************************************/
 
-        StringBuilder def = new StringBuilder("    ");
-        def.append(columnName).append(" VARCHAR(255)");
+    private static String buildForeignKeyConstraint(String schemaName, String tableName, String columnName, String refTable) {
+        return "ALTER TABLE @" + schemaName + "." + tableName
+               + " ADD CONSTRAINT fpk_" + columnName + "_id"
+               + " FOREIGN KEY (" + columnName + ") REFERENCES @" + refTable + " (" + refTable.substring(refTable.lastIndexOf(".") + 1) + "_id);";
+    }
 
-        // Foreign key to the enum table
-        def.append(",\n    CONSTRAINT ").append(columnName).append("FK")
-        .append(" FOREIGN KEY (").append(columnName).append(") REFERENCES ")
-        .append(enumTable).append("(ID)");
-
-        if (fieldNode.has("description")) {
-            String desc = fieldNode.get("description").asText().replace("'", "''");
-            def.append(" %DESCRIPTION '").append(desc).append("'");
+    private static void writeConstraintToFile(Path constraintsFile, String constraintStatement) {
+        try (FileWriter writer = new FileWriter(constraintsFile.toFile(), true)) {
+            writer.write(constraintStatement + "\n");
+        } catch (IOException e) {
+            System.err.println("[ERROR] Unable to write constraint to file: " + constraintsFile + " - " + e.getMessage());
         }
-        return def.toString();
+    }
+
+    /******************************************************
+     *               ENUMS INSERT INTO
+     ******************************************************/
+
+     private static String populateEnumTableStatements(String schemaName, String tableName, List<String> enumValues, Map<String, String> enumDescriptions) {
+        StringBuilder insertDDL = new StringBuilder();
+
+        for (String value : enumValues) {
+            String description = enumDescriptions.getOrDefault(value, null);
+            insertDDL.append("INSERT INTO @").append(schemaName + "." + tableName)
+               .append(" (" + tableName).append(", Description) VALUES (")
+               .append("'").append(value.replace("'", "''")).append("', ");
+            if (description != null) {
+                insertDDL.append("'").append(description).append("'");
+            } else {
+                insertDDL.append("NULL");
+            }
+            insertDDL.append(");\n");
+        }
+
+        return insertDDL.toString();
+
+    }
+
+    private static void writeInsertsToFile(Path insertsFile, String insertStatement) {
+        try (FileWriter writer = new FileWriter(insertsFile.toFile(), true)) {
+            writer.write(insertStatement + "\n");
+        } catch (IOException e) {
+            System.err.println("[ERROR] Unable to write insert statement to file: " + insertsFile + " - " + e.getMessage());
+        }
     }
 
     /******************************************************
@@ -316,25 +335,6 @@ public class FinOSParser {
             case "array"   -> "VARCHAR(-1)";
             default        -> "VARCHAR(255)";
         };
-    }
-
-    private static boolean isEnumReference(String rawRef, String subdirectoryName) {
-        Path foundFile = findSchemaFile(rawRef, subdirectoryName);
-        if (foundFile == null) {
-            return false;
-        }
-        try {
-            JsonNode root = objectMapper.readTree(foundFile.toFile());
-            if (root.has("type")
-                && "string".equalsIgnoreCase(root.get("type").asText())
-                && root.has("enum")
-                && root.get("enum").isArray()) {
-                return true;
-            }
-        } catch (IOException e) {
-            System.err.println("[ERROR] Reading file " + foundFile + ": " + e.getMessage());
-        }
-        return false;
     }
 
     private static Path findSchemaFile(String rawRef, String subdirectoryName) {
