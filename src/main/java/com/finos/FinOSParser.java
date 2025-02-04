@@ -56,7 +56,7 @@ public class FinOSParser {
             System.out.println("[INFO] DDL will be written to: " + ddlOutputFile);
             System.out.println("[INFO] Constraints will be written to: " + constraintsOutputFile);
 
-            processJsonFilesInDirectory(subdirectory, subdirectoryName, ddlOutputFile, constraintsOutputFile, insertsOutputFile);
+            processJsonFilesInDirectory(subdirectory, subdirectoryName, ddlOutputFile, constraintsOutputFile, insertsOutputFile, primaryKeysOutputFile);
 
         } catch (IOException e) {
             System.err.println("[ERROR] Unable to find the first directory: " + e.getMessage());
@@ -64,20 +64,20 @@ public class FinOSParser {
     }
 
 
-    private static void processJsonFilesInDirectory(Path directory, String subdirectoryName, Path ddlOutputFile, Path constraintsOutputFile, Path insertsOutputFile) {
+    private static void processJsonFilesInDirectory(Path directory, String subdirectoryName, Path ddlOutputFile, Path constraintsOutputFile, Path insertsOutputFile, Path primaryKeysOutputFile) {
         System.out.println("[INFO] Processing .json files in: " + directory);
 
         try (Stream<Path> dirStream = Files.walk(directory)) {
             dirStream.filter(Files::isRegularFile)
                      .filter(path -> path.toString().toLowerCase().endsWith(".json"))
-                     .forEach(jsonFile -> generateDDLFromJson(jsonFile, subdirectoryName, ddlOutputFile, constraintsOutputFile, insertsOutputFile));
+                     .forEach(jsonFile -> generateDDLFromJson(jsonFile, subdirectoryName, ddlOutputFile, constraintsOutputFile, insertsOutputFile, primaryKeysOutputFile));
         } catch (IOException e) {
             System.err.println("[ERROR] Unable to process JSON files in " + directory + ": " + e.getMessage());
         }
     }
 
 
-    private static void generateDDLFromJson(Path jsonFile, String subdirectoryName, Path ddlOutputFile, Path constraintsOutputFile, Path insertsOutputFile) {
+    private static void generateDDLFromJson(Path jsonFile, String subdirectoryName, Path ddlOutputFile, Path constraintsOutputFile, Path insertsOutputFile, Path primaryKeysOutputFile) {
         System.out.println("[INFO] Reading JSON file: " + jsonFile);
 
         try {
@@ -113,7 +113,7 @@ public class FinOSParser {
                     return;
                 }
             } else {
-                ddlStatements.append(buildCreateTableStatement(fullTableName, propertiesNode, requiredFields, subdirectoryName, constraintsOutputFile, schemaName));
+                ddlStatements.append(buildCreateTableStatement(fullTableName, propertiesNode, requiredFields, subdirectoryName, constraintsOutputFile, primaryKeysOutputFile, ddlOutputFile, schemaName));
             }
 
             try (FileWriter writer = new FileWriter(ddlOutputFile.toFile(), true)) {
@@ -151,7 +151,7 @@ public class FinOSParser {
      *               BUILDING CREATE TABLE STATEMENTS
      ******************************************************/
 
-     private static String buildCreateTableStatement(String tableName, JsonNode propertiesNode, Set<String> requiredFields, String subdirectoryName, Path constraintsOutputFile, String schemaName) {
+     private static String buildCreateTableStatement(String tableName, JsonNode propertiesNode, Set<String> requiredFields, String subdirectoryName, Path constraintsOutputFile, Path primaryKeysOutputFile, Path ddlOutputFile, String schemaName) {
         StringBuilder ddlBuilder = new StringBuilder("CREATE TABLE @");
         ddlBuilder.append(tableName).append(" (\n");
 
@@ -166,21 +166,24 @@ public class FinOSParser {
             JsonNode fieldNode = propertiesNode.get(key);
 
             String columnName = escapeReservedWord(key);
+            String columnType = determineColumnType(fieldNode);
+            boolean isRequired = requiredFields.contains(key);
+
+            if (columnType == "array") {
+                handleArrayType(tableName.substring(tableName.lastIndexOf('.') + 1), columnName, fieldNode, subdirectoryName, constraintsOutputFile, primaryKeysOutputFile, ddlOutputFile, schemaName);
+
+                columnType = "INT";
+                isRequired = true;
+            }
+
+            columns.add(buildColumnDefinition(columnName, columnType, fieldNode, isRequired));
 
             if (fieldNode.has("$ref")) {
                 String rawRef = fieldNode.get("$ref").asText();
-
                 String refTable = getRefTableName(rawRef, subdirectoryName);
-                boolean isRequired = requiredFields.contains(key);
-
-                columns.add(buildColumnDefinitionForRef(columnName, fieldNode, isRequired));
 
                 String alterTableStatement = buildForeignKeyConstraint(schemaName, tableName, columnName, refTable);
                 writeConstraintToFile(constraintsOutputFile, alterTableStatement);
-            } else {
-                String columnType = determineColumnType(fieldNode);
-                boolean isRequired = requiredFields.contains(key);
-                columns.add(buildColumnDefinition(columnName, columnType, fieldNode, isRequired));
             }
         }
 
@@ -230,6 +233,52 @@ public class FinOSParser {
         return ddl.toString();
     }
 
+    private static void handleArrayType(String parentTable, String columnName, JsonNode arrayNode, String subdirectoryName, Path constraintsOutputFile, Path primaryKeysOutputFile, Path ddlOutputFile, String schemaName) {
+        if (!arrayNode.has("items")) {
+            System.err.println("[WARN] Array without 'items' found in " + parentTable + "." + columnName + "; skipping.");
+            return;
+        }
+
+        JsonNode itemsNode = arrayNode.get("items");
+
+        String arrayTableName = parentTable + "_" + columnName;
+        String parentColumnName = parentTable + "_id";
+        StringBuilder ddlBuilder = new StringBuilder("CREATE TABLE ");
+        ddlBuilder.append(schemaName).append(".").append(arrayTableName).append(" (\n");
+        ddlBuilder.append("    ").append(parentColumnName).append(" INT NOT NULL,\n");
+
+        if (itemsNode.has("$ref")) {
+            // The array contains references to another table
+            String refTable = getRefTableName(itemsNode.get("$ref").asText(), subdirectoryName);
+            refTable = refTable.substring(refTable.lastIndexOf(".") + 1);
+            String refColumnName = refTable + "_id";
+            ddlBuilder.append("    ").append(refColumnName).append(" INT NOT NULL\n);\n\n");
+
+            // Write ALTER TABLE foreign key constraint to the constraints file
+            String alterTableStatement = buildForeignKeyConstraint(schemaName, arrayTableName, refColumnName, refTable);
+            writeConstraintToFile(constraintsOutputFile, alterTableStatement);
+        } else {
+            // The array contains primitive types
+            String columnType = determineColumnType(itemsNode);
+            ddlBuilder.append("    value ").append(columnType).append(" NOT NULL\n);\n\n");
+        }
+
+        // Write the new table DDL to the output file
+        try (FileWriter writer = new FileWriter(ddlOutputFile.toFile(), true)) {
+            writer.write(ddlBuilder.toString());
+        } catch (IOException e) {
+            System.err.println("[ERROR] Unable to write array DDL: " + e.getMessage());
+        }
+
+        // Write foreign key constraint for parent table reference
+        // String alterParentConstraint = "ALTER TABLE @" + schemaName + "." + arrayTableName
+        //         + " ADD CONSTRAINT fpk_" + arrayTableName + "_" + parentColumnName + " FOREIGN KEY (" + parentColumnName + ") REFERENCES @"
+        //         + schemaName + "." + parentTable + " (" + parentColumnName + ");";
+        // writeConstraintToFile(constraintsOutputFile, alterParentConstraint);
+    }
+
+
+
     /******************************************************
      *               BUILDING COLUMN DEFINITIONS
      ******************************************************/
@@ -249,21 +298,9 @@ public class FinOSParser {
         return def.toString();
     }
 
-    private static String buildColumnDefinitionForRef(String columnName, JsonNode fieldNode, boolean isRequired) {
-        StringBuilder def = new StringBuilder();
-        def.append("    ").append(columnName).append(" INT");
-
-        if (isRequired) {
-            def.append(" NOT NULL");
-        }
-
-        if (fieldNode.has("description")) {
-            String desc = fieldNode.get("description").asText().replace("'", "''");
-            def.append(" %DESCRIPTION '").append(desc).append("'");
-        }
-
-        return def.toString();
-    }
+    /******************************************************
+     *               ARRAY HANDLING
+     ******************************************************/
 
     /******************************************************
      *               FOREIGN KEYS ALTER TABLE
@@ -332,8 +369,8 @@ public class FinOSParser {
             case "number"  -> "FLOAT";
             case "boolean" -> "BOOLEAN";
             case "object"  -> "JSON";
-            case "array"   -> "VARCHAR(-1)";
-            default        -> "VARCHAR(255)";
+            case "array"   -> "array";
+            default        -> "INT";
         };
     }
 
