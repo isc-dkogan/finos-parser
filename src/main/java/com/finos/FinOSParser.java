@@ -9,6 +9,9 @@ import java.nio.file.*;
 import java.util.*;
 import java.util.stream.Stream;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 public class FinOSParser {
     private static final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -21,10 +24,12 @@ public class FinOSParser {
     Path insertsOutputFile;
     Path primaryKeysOutputFile;
 
+    private static final Logger log = LogManager.getLogger(FinOSParser.class);
     public static void main(String[] args) {
         FinOSParser parser = new FinOSParser();
 
-        System.out.println("[INFO] Starting FinOSParser with data/ folder...");
+        log.info("Starting FinOSParser with data/ folder...");
+        // parser.processDirectories(Paths.get("data"));
         parser.processFirstDirectory(Paths.get("data"));
     }
 
@@ -32,8 +37,51 @@ public class FinOSParser {
      *              PROCESSING DATA
      ******************************************************/
 
-     private void processFirstDirectory(Path dataFolder) {
-        System.out.println("[INFO] Searching for subdirectories in: " + dataFolder);
+    // private void processDirectories(Path dataFolder) {
+    //     log.info("Searching for subdirectories in: " + dataFolder);
+
+    //     try (Stream<Path> paths = Files.walk(dataFolder, 1)) {
+    //         List<Path> subdirectories = paths
+    //             .filter(Files::isDirectory)
+    //             .filter(path -> !path.equals(dataFolder))
+    //             .toList();
+
+    //         if (subdirectories.isEmpty()) {
+    //             log.warn("No subdirectories found in " + dataFolder);
+    //             return;
+    //         }
+
+    //         for (Path subdir : subdirectories) {
+    //             subdirectory = subdir;
+    //             subdirectoryName = subdirectory.getFileName().toString();
+    //             log.info("Found subdirectory: " + subdirectoryName);
+
+    //             version = subdirectoryName.replace("cdm-json-schema-", "");
+
+    //             Path outputDir = Paths.get("output", subdirectoryName);
+    //             if (!Files.exists(outputDir)) {
+    //                 Files.createDirectories(outputDir);
+    //                 log.info("Created output directory: " + outputDir);
+    //             }
+
+    //             ddlOutputFile = outputDir.resolve(version + "_ddl.sql");
+    //             constraintsOutputFile = outputDir.resolve(version + "_constraints.sql");
+    //             insertsOutputFile = outputDir.resolve(version + "_inserts.sql");
+    //             primaryKeysOutputFile = outputDir.resolve(version + "_primary_keys.sql");
+
+    //             log.info("DDL will be written to: " + ddlOutputFile);
+    //             log.info("Constraints will be written to: " + constraintsOutputFile);
+
+    //             processJsonFilesInDirectory();
+    //         }
+
+    //     } catch (IOException e) {
+    //         log.error("Unable to process directories: " + e.getMessage());
+    //     }
+    // }
+
+    private void processFirstDirectory(Path dataFolder) {
+        log.info("Searching for subdirectories in: " + dataFolder);
 
         try (Stream<Path> paths = Files.walk(dataFolder, 1)) {
             Optional<Path> firstDir = paths
@@ -42,20 +90,20 @@ public class FinOSParser {
                 .findFirst();
 
             if (firstDir.isEmpty()) {
-                System.out.println("[WARN] No subdirectories found in " + dataFolder);
+                log.warn("No subdirectories found in " + dataFolder);
                 return;
             }
 
             subdirectory = firstDir.get();
             subdirectoryName = subdirectory.getFileName().toString();
-            System.out.println("[INFO] Found subdirectory: " + subdirectoryName);
+            log.info("Found subdirectory: " + subdirectoryName);
 
             version = subdirectoryName.replace("cdm-json-schema-", "");
 
             Path outputDir = Paths.get("output", subdirectoryName);
             if (!Files.exists(outputDir)) {
                 Files.createDirectories(outputDir);
-                System.out.println("[INFO] Created output directory: " + outputDir);
+                log.info("Created output directory: " + outputDir);
             }
 
             ddlOutputFile = outputDir.resolve(version + "_ddl.sql");
@@ -63,38 +111,37 @@ public class FinOSParser {
             insertsOutputFile = outputDir.resolve(version + "_inserts.sql");
             primaryKeysOutputFile = outputDir.resolve(version + "_primary_keys.sql");
 
-            System.out.println("[INFO] DDL will be written to: " + ddlOutputFile);
-            System.out.println("[INFO] Constraints will be written to: " + constraintsOutputFile);
+            log.info("DDL will be written to: " + ddlOutputFile);
+            log.info("Constraints will be written to: " + constraintsOutputFile);
 
             processJsonFilesInDirectory();
 
         } catch (IOException e) {
-            System.err.println("[ERROR] Unable to find the first directory: " + e.getMessage());
+            log.error("Unable to find the first directory: " + e.getMessage());
         }
     }
 
-
     private void processJsonFilesInDirectory() {
-        System.out.println("[INFO] Processing .json files in: " + subdirectory);
+        log.info("Processing .json files in: " + subdirectory);
 
         try (Stream<Path> dirStream = Files.walk(subdirectory)) {
             dirStream.filter(Files::isRegularFile)
                      .filter(path -> path.toString().toLowerCase().endsWith(".json"))
                      .forEach(jsonFile -> generateDDLFromJson(jsonFile));
         } catch (IOException e) {
-            System.err.println("[ERROR] Unable to process JSON files in " + subdirectory + ": " + e.getMessage());
+            log.error("Unable to process JSON files in " + subdirectory + ": " + e.getMessage());
         }
     }
 
 
     private void generateDDLFromJson(Path jsonFile) {
-        System.out.println("[INFO] Reading JSON file: " + jsonFile);
+        log.info("Reading JSON file: " + jsonFile);
 
         try {
             JsonNode root = objectMapper.readTree(jsonFile.toFile());
 
             if (!root.has("title")) {
-                System.err.println("[WARN] No 'title' found in JSON: " + jsonFile + "; skipping.");
+                log.warn("No 'title' found in JSON: " + jsonFile + "; skipping.");
                 return;
             }
 
@@ -102,7 +149,7 @@ public class FinOSParser {
             String schemaName = root.has("$anchor") ? root.get("$anchor").asText().replace(".", "_") : "default_schema";
             String tableName = root.get("title").asText();
             String fullTableName = schemaName + "." + tableName;
-            System.out.println("[INFO] Creating table for: " + fullTableName);
+            log.info("Creating table for: " + fullTableName);
 
             Set<String> requiredFields = new HashSet<>();
             JsonNode requiredNode = root.get("required");
@@ -119,7 +166,7 @@ public class FinOSParser {
                 if (root.has("enum") && root.get("enum").isArray()) {
                     ddlStatements.append(buildCreateTableStatementForEnum(schemaName, tableName, fullTableName, root));
                 } else {
-                    System.err.println("[WARN] No 'properties' object in " + jsonFile + "; skipping.");
+                    log.warn("No 'properties' object in " + jsonFile + "; skipping.");
                     return;
                 }
             } else {
@@ -129,10 +176,10 @@ public class FinOSParser {
             try (FileWriter writer = new FileWriter(ddlOutputFile.toFile(), true)) {
                 writer.write(ddlStatements.toString());
             }
-            System.out.println("[INFO] Wrote DDL for table: " + fullTableName);
+            log.info("Wrote DDL for table: " + fullTableName);
 
         } catch (IOException e) {
-            System.err.println("[ERROR] Unable to read JSON file " + jsonFile + ": " + e.getMessage());
+            log.error("Unable to read JSON file " + jsonFile + ": " + e.getMessage());
         }
     }
 
@@ -151,7 +198,7 @@ public class FinOSParser {
             return schemaName + "." + tableName;
 
         } catch (IOException e) {
-            System.err.println("[ERROR] Unable to read referenced file for title: " + foundFile + ": " + e.getMessage());
+            log.error("Unable to read referenced file for title: " + foundFile + ": " + e.getMessage());
         }
 
         return rawRef; // Fallback if "title" is not present
@@ -248,7 +295,7 @@ public class FinOSParser {
 
     private void handleArrayType(String parentTable, String columnName, JsonNode arrayNode, String schemaName) {
         if (!arrayNode.has("items")) {
-            System.err.println("[WARN] Array without 'items' found in " + parentTable + "." + columnName + "; skipping.");
+            log.warn("Array without 'items' found in " + parentTable + "." + columnName + "; skipping.");
             return;
         }
 
@@ -284,7 +331,7 @@ public class FinOSParser {
         try (FileWriter writer = new FileWriter(ddlOutputFile.toFile(), true)) {
             writer.write(ddlBuilder.toString());
         } catch (IOException e) {
-            System.err.println("[ERROR] Unable to write array DDL: " + e.getMessage());
+            log.error("Unable to write array DDL: " + e.getMessage());
         }
 
         // Write foreign key constraint for parent table reference
@@ -328,7 +375,7 @@ public class FinOSParser {
         try (FileWriter writer = new FileWriter(primaryKeysOutputFile.toFile(), true)) {
             writer.write(primaryKeyConstraint);
         } catch (IOException e) {
-            System.err.println("[ERROR] Unable to write primaryKeyConstraint: " + e.getMessage());
+            log.error("Unable to write primaryKeyConstraint: " + e.getMessage());
         }
      }
 
@@ -346,7 +393,7 @@ public class FinOSParser {
         try (FileWriter writer = new FileWriter(constraintsOutputFile.toFile(), true)) {
             writer.write(constraintStatement + "\n");
         } catch (IOException e) {
-            System.err.println("[ERROR] Unable to write constraint to file: " + constraintsOutputFile + " - " + e.getMessage());
+            log.error("Unable to write constraint to file: " + constraintsOutputFile + " - " + e.getMessage());
         }
     }
 
@@ -378,7 +425,7 @@ public class FinOSParser {
         try (FileWriter writer = new FileWriter(insertsFile.toFile(), true)) {
             writer.write(insertStatement + "\n");
         } catch (IOException e) {
-            System.err.println("[ERROR] Unable to write insert statement to file: " + insertsFile + " - " + e.getMessage());
+            log.error("Unable to write insert statement to file: " + insertsFile + " - " + e.getMessage());
         }
     }
 

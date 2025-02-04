@@ -1,0 +1,10 @@
+.DS_Store
+Thumbs.db
+*.class
+*.log
+*.jar
+*.war
+*.ear
+/data/
+/output/
+
