@@ -164,12 +164,12 @@ public class FinOSParser {
      private String buildCreateTableStatement(String fullTableName, JsonNode propertiesNode, Set<String> requiredFields, String schemaName) {
         String tableName = fullTableName.substring(fullTableName.lastIndexOf('.') + 1);
 
-        StringBuilder ddlBuilder = new StringBuilder("CREATE TABLE @");
+        StringBuilder ddlBuilder = new StringBuilder("CREATE TABLE ");
         ddlBuilder.append(fullTableName).append(" (\n");
 
         List<String> columns = new ArrayList<>();
 
-        columns.add("    " + tableName + "_id NOT NULL");
+        columns.add("    " + tableName + "_id INT UNIQUE NOT NULL");
 
         Iterator<String> fieldNames = propertiesNode.fieldNames();
 
@@ -199,6 +199,8 @@ public class FinOSParser {
             }
         }
 
+        buildPrimaryKeyConstraint(schemaName, tableName, tableName + "_id");
+
         ddlBuilder.append(String.join(",\n", columns));
         ddlBuilder.append("\n);\n\n");
         return ddlBuilder.toString();
@@ -212,10 +214,9 @@ public class FinOSParser {
             columnType = determineColumnType(root);
         }
 
-        ddl.append("CREATE TABLE @").append(fullTableName).append(" (\n");
-        ddl.append("    " + tableName + "_id NOT NULL,\n");
+        ddl.append("CREATE TABLE ").append(fullTableName).append(" (\n");
         ddl.append("    ").append(tableName).append(" ").append(columnType).append(" UNIQUE NOT NULL,\n");
-        ddl.append("    Description VARCHAR(255)\n");
+        ddl.append("    Description VARCHAR(max)\n");
         ddl.append(");\n\n");
 
         List<String> enumValues = new ArrayList<>();
@@ -267,7 +268,7 @@ public class FinOSParser {
             refTable = refTable.substring(refTable.lastIndexOf(".") + 1);
             String refColumnName = refTable + "_id";
             valueColumnName = refColumnName;
-            ddlBuilder.append("    ").append(refColumnName).append(" INT NOT NULL\n);\n\n");
+            ddlBuilder.append("    ").append(refColumnName).append(" INT UNIQUE NOT NULL\n);\n\n");
 
             // Write ALTER TABLE foreign key constraint to the constraints file
             String alterTableStatement = buildForeignKeyConstraint(schemaName, arrayTableName, refColumnName, refTable);
@@ -276,7 +277,7 @@ public class FinOSParser {
             // The array contains primitive types
             String columnType = determineColumnType(itemsNode);
             valueColumnName = "value";
-            ddlBuilder.append("    value ").append(columnType).append(" NOT NULL\n);\n\n");
+            ddlBuilder.append("    value ").append(columnType).append(" UNIQUE NOT NULL\n);\n\n");
         }
 
         // Write the new table DDL to the output file
@@ -287,25 +288,14 @@ public class FinOSParser {
         }
 
         // Write foreign key constraint for parent table reference
-        String parentConstraint = "ALTER TABLE @" + schemaName + "." + arrayTableName
+        String parentConstraint = "ALTER TABLE " + schemaName + "." + arrayTableName
                                     + " ADD CONSTRAINT fpk_" + arrayTableName + "_" + parentColumnName
-                                    + " FOREIGN KEY (" + parentColumnName + ") REFERENCES @"
+                                    + " FOREIGN KEY (" + parentColumnName + ") REFERENCES "
                                     + schemaName + "." + parentTable + " (" + parentColumnName + ");";
         writeConstraintToFile(parentConstraint);
 
-        // Add primary key
-        String primaryKeyConstraint = "ALTER TABLE @" + schemaName + "." + arrayTableName
-                                        + " ADD CONSTRAINT xpk_" + arrayTableName
-                                        + " PRIMARY KEY (" + parentColumnName + "," + valueColumnName + ");\n";
-
-        try (FileWriter writer = new FileWriter(primaryKeysOutputFile.toFile(), true)) {
-            writer.write(primaryKeyConstraint);
-        } catch (IOException e) {
-            System.err.println("[ERROR] Unable to write primaryKeyConstraint: " + e.getMessage());
-        }
+        buildPrimaryKeyConstraint(schemaName, arrayTableName, parentColumnName + "," + valueColumnName);
     }
-
-
 
     /******************************************************
      *               BUILDING COLUMN DEFINITIONS
@@ -327,17 +317,29 @@ public class FinOSParser {
     }
 
     /******************************************************
-     *               ARRAY HANDLING
+     *               PRIMARY KEYS ALTER TABLE
      ******************************************************/
+
+     private void buildPrimaryKeyConstraint(String schemaName, String tableName, String primaryKey) {
+        String primaryKeyConstraint = "ALTER TABLE " + schemaName + "." + tableName
+                                        + " ADD CONSTRAINT xpk_" + tableName
+                                        + " PRIMARY KEY (" + primaryKey + ");\n";
+
+        try (FileWriter writer = new FileWriter(primaryKeysOutputFile.toFile(), true)) {
+            writer.write(primaryKeyConstraint);
+        } catch (IOException e) {
+            System.err.println("[ERROR] Unable to write primaryKeyConstraint: " + e.getMessage());
+        }
+     }
 
     /******************************************************
      *               FOREIGN KEYS ALTER TABLE
      ******************************************************/
 
     private String buildForeignKeyConstraint(String schemaName, String tableName, String columnName, String refTable) {
-        return "ALTER TABLE @" + schemaName + "." + tableName
+        return "ALTER TABLE " + schemaName + "." + tableName
                + " ADD CONSTRAINT fpk_" + columnName + "_id"
-               + " FOREIGN KEY (" + columnName + ") REFERENCES @" + refTable + " (" + refTable.substring(refTable.lastIndexOf(".") + 1) + "_id);";
+               + " FOREIGN KEY (" + columnName + ") REFERENCES " + refTable + " (" + refTable.substring(refTable.lastIndexOf(".") + 1) + "_id);";
     }
 
     private void writeConstraintToFile(String constraintStatement) {
@@ -357,7 +359,7 @@ public class FinOSParser {
 
         for (String value : enumValues) {
             String description = enumDescriptions.getOrDefault(value, null);
-            insertDDL.append("INSERT INTO @").append(schemaName + "." + tableName)
+            insertDDL.append("INSERT INTO ").append(schemaName + "." + tableName)
                .append(" (" + tableName).append(", Description) VALUES (")
                .append("'").append(value.replace("'", "''")).append("', ");
             if (description != null) {
@@ -395,7 +397,7 @@ public class FinOSParser {
             case "string"  -> "VARCHAR(255)";
             case "integer" -> "INT";
             case "number"  -> "FLOAT";
-            case "boolean" -> "BOOLEAN";
+            case "boolean" -> "INT";
             case "object"  -> "JSON";
             case "array"   -> "array";
             default        -> "INT";
