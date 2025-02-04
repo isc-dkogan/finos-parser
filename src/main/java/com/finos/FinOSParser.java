@@ -161,9 +161,11 @@ public class FinOSParser {
      *               BUILDING CREATE TABLE STATEMENTS
      ******************************************************/
 
-     private String buildCreateTableStatement(String tableName, JsonNode propertiesNode, Set<String> requiredFields, String schemaName) {
+     private String buildCreateTableStatement(String fullTableName, JsonNode propertiesNode, Set<String> requiredFields, String schemaName) {
+        String tableName = fullTableName.substring(fullTableName.lastIndexOf('.') + 1);
+
         StringBuilder ddlBuilder = new StringBuilder("CREATE TABLE @");
-        ddlBuilder.append(tableName).append(" (\n");
+        ddlBuilder.append(fullTableName).append(" (\n");
 
         List<String> columns = new ArrayList<>();
 
@@ -180,7 +182,7 @@ public class FinOSParser {
             boolean isRequired = requiredFields.contains(key);
 
             if (columnType == "array") {
-                handleArrayType(tableName.substring(tableName.lastIndexOf('.') + 1), columnName, fieldNode, schemaName);
+                handleArrayType(tableName, columnName, fieldNode, schemaName);
 
                 columnType = "INT";
                 isRequired = true;
@@ -257,11 +259,14 @@ public class FinOSParser {
         ddlBuilder.append(schemaName).append(".").append(arrayTableName).append(" (\n");
         ddlBuilder.append("    ").append(parentColumnName).append(" INT NOT NULL,\n");
 
+        String valueColumnName;
+
         if (itemsNode.has("$ref")) {
             // The array contains references to another table
             String refTable = getRefTableName(itemsNode.get("$ref").asText(), subdirectoryName);
             refTable = refTable.substring(refTable.lastIndexOf(".") + 1);
             String refColumnName = refTable + "_id";
+            valueColumnName = refColumnName;
             ddlBuilder.append("    ").append(refColumnName).append(" INT NOT NULL\n);\n\n");
 
             // Write ALTER TABLE foreign key constraint to the constraints file
@@ -270,6 +275,7 @@ public class FinOSParser {
         } else {
             // The array contains primitive types
             String columnType = determineColumnType(itemsNode);
+            valueColumnName = "value";
             ddlBuilder.append("    value ").append(columnType).append(" NOT NULL\n);\n\n");
         }
 
@@ -281,10 +287,22 @@ public class FinOSParser {
         }
 
         // Write foreign key constraint for parent table reference
-        // String alterParentConstraint = "ALTER TABLE @" + schemaName + "." + arrayTableName
-        //         + " ADD CONSTRAINT fpk_" + arrayTableName + "_" + parentColumnName + " FOREIGN KEY (" + parentColumnName + ") REFERENCES @"
-        //         + schemaName + "." + parentTable + " (" + parentColumnName + ");";
-        // writeConstraintToFile(alterParentConstraint);
+        String parentConstraint = "ALTER TABLE @" + schemaName + "." + arrayTableName
+                                    + " ADD CONSTRAINT fpk_" + arrayTableName + "_" + parentColumnName
+                                    + " FOREIGN KEY (" + parentColumnName + ") REFERENCES @"
+                                    + schemaName + "." + parentTable + " (" + parentColumnName + ");";
+        writeConstraintToFile(parentConstraint);
+
+        // Add primary key
+        String primaryKeyConstraint = "ALTER TABLE @" + schemaName + "." + arrayTableName
+                                        + " ADD CONSTRAINT xpk_" + arrayTableName
+                                        + " PRIMARY KEY (" + parentColumnName + "," + valueColumnName + ");\n";
+
+        try (FileWriter writer = new FileWriter(primaryKeysOutputFile.toFile(), true)) {
+            writer.write(primaryKeyConstraint);
+        } catch (IOException e) {
+            System.err.println("[ERROR] Unable to write primaryKeyConstraint: " + e.getMessage());
+        }
     }
 
 
