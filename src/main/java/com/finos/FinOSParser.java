@@ -145,7 +145,6 @@ public class FinOSParser {
                 return;
             }
 
-            // Extract schemaName from $anchor (ensuring it's properly formatted)
             String schemaName = root.has("$anchor") ? root.get("$anchor").asText().replace(".", "_") : "default_schema";
             String tableName = root.get("title").asText();
             String fullTableName = schemaName + "." + tableName;
@@ -201,7 +200,7 @@ public class FinOSParser {
             log.error("Unable to read referenced file for title: " + foundFile + ": " + e.getMessage());
         }
 
-        return rawRef; // Fallback if "title" is not present
+        return rawRef;
     }
 
     /******************************************************
@@ -262,7 +261,7 @@ public class FinOSParser {
         }
 
         ddl.append("CREATE TABLE ").append(fullTableName).append(" (\n");
-        ddl.append("    ").append(tableName).append(" ").append(columnType).append(" UNIQUE NOT NULL,\n");
+        ddl.append("    ").append(tableName + "_id").append(" ").append(columnType).append(" UNIQUE NOT NULL,\n");
         ddl.append("    Description VARCHAR(max)\n");
         ddl.append(");\n\n");
 
@@ -312,8 +311,7 @@ public class FinOSParser {
         if (itemsNode.has("$ref")) {
             // The array contains references to another table
             String refTable = getRefTableName(itemsNode.get("$ref").asText(), subdirectoryName);
-            refTable = refTable.substring(refTable.lastIndexOf(".") + 1);
-            String refColumnName = refTable + "_id";
+            String refColumnName = refTable.substring(refTable.lastIndexOf(".") + 1) + "_id";
             valueColumnName = refColumnName;
             ddlBuilder.append("    ").append(refColumnName).append(" INT UNIQUE NOT NULL\n);\n\n");
 
@@ -407,7 +405,7 @@ public class FinOSParser {
         for (String value : enumValues) {
             String description = enumDescriptions.getOrDefault(value, null);
             insertDDL.append("INSERT INTO ").append(schemaName + "." + tableName)
-               .append(" (" + tableName).append(", Description) VALUES (")
+               .append(" (" + tableName + "_id").append(", Description) VALUES (")
                .append("'").append(value.replace("'", "''")).append("', ");
             if (description != null) {
                 insertDDL.append("'").append(description).append("'");
@@ -476,7 +474,7 @@ public class FinOSParser {
             "EXCEPTION", "EXEC", "EXECUTE", "EXISTS", "EXTERNAL", "EXTRACT",
             "FALSE", "FETCH", "FIRST", "FLOAT", "FOR", "FOREIGN", "FOUND", "FROM", "FULL",
             "GET", "GLOBAL", "GO", "GOTO", "GRANT", "GROUP", "HAVING", "HOUR",
-            "IDENTITY", "IMMEDIATE", "IN", "INDICATOR", "INITIALLY",
+            "IDENTITY", "IMMEDIATE", "IN", "INDEX", "INDICATOR", "INITIALLY",
             "INNER", "INPUT", "INSENSITIVE", "INSERT", "INT", "INTEGER", "INTERSECT",
             "INTERVAL", "INTO", "IS", "ISOLATION", "JOIN", "LANGUAGE", "LAST",
             "LEADING", "LEFT", "LEVEL", "LIKE", "LOCAL", "LOWER", "MATCH", "MAX", "MIN",
@@ -486,7 +484,7 @@ public class FinOSParser {
             "PAD", "PARTIAL", "PREPARE", "PRESERVE", "PRIMARY", "PRIOR", "PRIVILEGES",
             "PROCEDURE", "PUBLIC", "READ", "REAL", "REFERENCES", "RELATIVE",
             "RESTRICT", "REVOKE", "RIGHT", "ROLE", "ROLLBACK", "ROWS",
-            "SCHEMA", "SCROLL", "SECOND", "SECTION", "SELECT", "SESSION_USER",
+            "SCHEMA", "SCROLL", "SECOND", "SECURITY", "SECTION", "SELECT", "SESSION_USER",
             "SET", "SHARD", "SMALLINT", "SOME", "SPACE", "SQLERROR", "SQLSTATE",
             "STATISTICS", "SUBSTRING", "SUM", "SYSDATE", "SYSTEM_USER", "TABLE",
             "TEMPORARY", "THEN", "TIME", "TIMEZONE_HOUR", "TIMEZONE_MINUTE",
@@ -495,6 +493,8 @@ public class FinOSParser {
             "WHENEVER", "WHERE", "WITH", "WORK", "WRITE"
         );
 
-        return reservedWords.contains(word.toLowerCase()) ? "\"" + word + "\"" : word;
+        return reservedWords.stream().map(String::toLowerCase).anyMatch(word.toLowerCase()::equals)
+                ? "\"" + word + "\""
+                : word;
     }
 }

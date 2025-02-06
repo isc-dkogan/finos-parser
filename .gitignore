@@ -5,6 +5,5 @@ Thumbs.db
 *.jar
 *.war
 *.ear
-/data/
 /output/
 
