@@ -311,6 +311,9 @@ public class FinOSParser {
             // The array contains references to another table
             String refTable = getRefTableName(itemsNode.get("$ref").asText(), subdirectoryName);
             String refColumnName = refTable.substring(refTable.lastIndexOf(".") + 1) + "_id";
+            if (refColumnName == parentColumnName) {
+                refColumnName = refColumnName + "2";
+                }
             valueColumnName = refColumnName;
             ddlBuilder.append("    ").append(refColumnName).append(" INT UNIQUE NOT NULL\n);\n\n");
 
