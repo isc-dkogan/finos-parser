@@ -29,56 +29,56 @@ public class FinOSParser {
         FinOSParser parser = new FinOSParser();
 
         log.info("Starting FinOSParser with data/ folder...");
-        // parser.processDirectories(Paths.get("data"));
-        parser.processFirstDirectory(Paths.get("data"));
+        parser.processDirectories(Paths.get("data"));
+        // parser.processFirstDirectory(Paths.get("data"));
     }
 
     /******************************************************
      *              PROCESSING DATA
      ******************************************************/
 
-    // private void processDirectories(Path dataFolder) {
-    //     log.info("Searching for subdirectories in: " + dataFolder);
+    private void processDirectories(Path dataFolder) {
+        log.info("Searching for subdirectories in: " + dataFolder);
 
-    //     try (Stream<Path> paths = Files.walk(dataFolder, 1)) {
-    //         List<Path> subdirectories = paths
-    //             .filter(Files::isDirectory)
-    //             .filter(path -> !path.equals(dataFolder))
-    //             .toList();
+        try (Stream<Path> paths = Files.walk(dataFolder, 1)) {
+            List<Path> subdirectories = paths
+                .filter(Files::isDirectory)
+                .filter(path -> !path.equals(dataFolder))
+                .toList();
 
-    //         if (subdirectories.isEmpty()) {
-    //             log.warn("No subdirectories found in " + dataFolder);
-    //             return;
-    //         }
+            if (subdirectories.isEmpty()) {
+                log.warn("No subdirectories found in " + dataFolder);
+                return;
+            }
 
-    //         for (Path subdir : subdirectories) {
-    //             subdirectory = subdir;
-    //             subdirectoryName = subdirectory.getFileName().toString();
-    //             log.info("Found subdirectory: " + subdirectoryName);
+            for (Path subdir : subdirectories) {
+                subdirectory = subdir;
+                subdirectoryName = subdirectory.getFileName().toString();
+                log.info("Found subdirectory: " + subdirectoryName);
 
-    //             version = subdirectoryName.replace("cdm-json-schema-", "");
+                version = subdirectoryName.replace("cdm-json-schema-", "");
 
-    //             Path outputDir = Paths.get("output", subdirectoryName);
-    //             if (!Files.exists(outputDir)) {
-    //                 Files.createDirectories(outputDir);
-    //                 log.info("Created output directory: " + outputDir);
-    //             }
+                Path outputDir = Paths.get("output", subdirectoryName);
+                if (!Files.exists(outputDir)) {
+                    Files.createDirectories(outputDir);
+                    log.info("Created output directory: " + outputDir);
+                }
 
-    //             ddlOutputFile = outputDir.resolve(version + "_ddl.sql");
-    //             constraintsOutputFile = outputDir.resolve(version + "_constraints.sql");
-    //             insertsOutputFile = outputDir.resolve(version + "_inserts.sql");
-    //             primaryKeysOutputFile = outputDir.resolve(version + "_primary_keys.sql");
+                ddlOutputFile = outputDir.resolve(version + "_ddl.sql");
+                constraintsOutputFile = outputDir.resolve(version + "_constraints.sql");
+                insertsOutputFile = outputDir.resolve(version + "_inserts.sql");
+                primaryKeysOutputFile = outputDir.resolve(version + "_primary_keys.sql");
 
-    //             log.info("DDL will be written to: " + ddlOutputFile);
-    //             log.info("Constraints will be written to: " + constraintsOutputFile);
+                log.info("DDL will be written to: " + ddlOutputFile);
+                log.info("Constraints will be written to: " + constraintsOutputFile);
 
-    //             processJsonFilesInDirectory();
-    //         }
+                processJsonFilesInDirectory();
+            }
 
-    //     } catch (IOException e) {
-    //         log.error("Unable to process directories: " + e.getMessage());
-    //     }
-    // }
+        } catch (IOException e) {
+            log.error("Unable to process directories: " + e.getMessage());
+        }
+    }
 
     private void processFirstDirectory(Path dataFolder) {
         log.info("Searching for subdirectories in: " + dataFolder);
@@ -223,24 +223,23 @@ public class FinOSParser {
             String key = fieldNames.next();
             JsonNode fieldNode = propertiesNode.get(key);
 
-            String columnName = escapeReservedWord(key);
             String columnType = determineColumnType(fieldNode);
             boolean isRequired = requiredFields.contains(key);
 
             if (columnType == "array") {
-                handleArrayType(tableName, columnName, fieldNode, schemaName);
+                handleArrayType(tableName, key, fieldNode, schemaName);
 
                 columnType = "INT";
                 isRequired = true;
             }
 
-            columns.add(buildColumnDefinition(columnName, columnType, fieldNode, isRequired));
+            columns.add(buildColumnDefinition(key, columnType, fieldNode, isRequired));
 
             if (fieldNode.has("$ref")) {
                 String rawRef = fieldNode.get("$ref").asText();
                 String refTable = getRefTableName(rawRef, subdirectoryName);
 
-                String alterTableStatement = buildForeignKeyConstraint(schemaName, tableName, columnName, refTable);
+                String alterTableStatement = buildForeignKeyConstraint(schemaName, tableName, key, refTable);
                 writeConstraintToFile(alterTableStatement);
             }
         }
@@ -348,7 +347,7 @@ public class FinOSParser {
 
 
     private String buildColumnDefinition(String columnName, String columnType, JsonNode fieldNode, boolean isRequired) {
-        StringBuilder def = new StringBuilder("    ").append(columnName).append(" ").append(columnType);
+        StringBuilder def = new StringBuilder("    ").append(escapeReservedWord(columnName)).append(" ").append(columnType);
 
         if (isRequired) {
             def.append(" NOT NULL");
@@ -384,7 +383,7 @@ public class FinOSParser {
     private String buildForeignKeyConstraint(String schemaName, String tableName, String columnName, String refTable) {
         return "ALTER TABLE " + schemaName + "." + tableName
                + " ADD CONSTRAINT fpk_" + columnName + "_id"
-               + " FOREIGN KEY (" + columnName + ") REFERENCES " + refTable + " (" + refTable.substring(refTable.lastIndexOf(".") + 1) + "_id);";
+               + " FOREIGN KEY (" + escapeReservedWord(columnName) + ") REFERENCES " + refTable + " (" + refTable.substring(refTable.lastIndexOf(".") + 1) + "_id);";
     }
 
     private void writeConstraintToFile(String constraintStatement) {
