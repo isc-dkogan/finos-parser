@@ -145,7 +145,9 @@ public class FinOSParser {
                 return;
             }
 
-            String schemaName = root.has("$anchor") ? root.get("$anchor").asText().replace(".", "_") : "default_schema";
+            String anchor = root.has("$anchor") ? root.get("$anchor").asText() : "default.schema";
+            String versionNumber = version.replaceAll("[^0-9]", "");
+            String schemaName = anchor.replaceFirst("\\.", versionNumber + ".").replace(".", "_");
             String tableName = root.get("title").asText();
             String fullTableName = schemaName + "." + tableName;
             log.info("Creating table for: " + fullTableName);
