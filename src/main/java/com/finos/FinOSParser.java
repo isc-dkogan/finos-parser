@@ -18,6 +18,7 @@ public class FinOSParser {
     Path subdirectory;
     String subdirectoryName;
     String version;
+    String versionNumber;
 
     Path ddlOutputFile;
     Path constraintsOutputFile;
@@ -57,6 +58,7 @@ public class FinOSParser {
                 log.info("Found subdirectory: " + subdirectoryName);
 
                 version = subdirectoryName.replace("cdm-json-schema-", "");
+                versionNumber = version.replaceAll("[^0-9]", "");
 
                 Path outputDir = Paths.get("output", subdirectoryName);
                 if (!Files.exists(outputDir)) {
@@ -146,7 +148,6 @@ public class FinOSParser {
             }
 
             String anchor = root.has("$anchor") ? root.get("$anchor").asText() : "default.schema";
-            String versionNumber = version.replaceAll("[^0-9]", "");
             String schemaName = anchor.replaceFirst("\\.", versionNumber + ".").replace(".", "_");
             String tableName = root.get("title").asText();
             String fullTableName = schemaName + "." + tableName;
@@ -194,7 +195,8 @@ public class FinOSParser {
         try {
             JsonNode root = objectMapper.readTree(foundFile.toFile());
 
-            String schemaName = root.has("$anchor") ? root.get("$anchor").asText().replace(".", "_") : "default_schema";
+            String anchor = root.has("$anchor") ? root.get("$anchor").asText() : "default.schema";
+            String schemaName = anchor.replaceFirst("\\.", versionNumber + ".").replace(".", "_");
             String tableName = root.get("title").asText();
             return schemaName + "." + tableName;
 
@@ -313,11 +315,13 @@ public class FinOSParser {
             // The array contains references to another table
             String refTable = getRefTableName(itemsNode.get("$ref").asText(), subdirectoryName);
             String refColumnName = refTable.substring(refTable.lastIndexOf(".") + 1) + "_id";
-            if (refColumnName == parentColumnName) {
-                refColumnName = refColumnName + "2";
+            if (refColumnName.equals(parentColumnName)) {
+                valueColumnName = refColumnName + "_2";
                 }
-            valueColumnName = refColumnName;
-            ddlBuilder.append("    ").append(refColumnName).append(" INT UNIQUE NOT NULL\n);\n\n");
+            else {
+                valueColumnName = refColumnName;
+            }
+            ddlBuilder.append("    ").append(valueColumnName).append(" INT UNIQUE NOT NULL\n);\n\n");
 
             // Write ALTER TABLE foreign key constraint to the constraints file
             String alterTableStatement = buildForeignKeyConstraint(schemaName, arrayTableName, refColumnName, refTable);
